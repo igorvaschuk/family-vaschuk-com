@@ -10,7 +10,7 @@
 // phones have accounts; the map is built to take another marker layer.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-import { getFirestore, collection, doc, query, orderBy, limit, limitToLast, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore, collection, doc, query, orderBy, limit, limitToLast, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, getDocFromServer, disableNetwork, enableNetwork, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getMessaging, getToken, deleteToken, isSupported } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging.js";
 import {
   FAMILY_TZ, familyNow, agenda, occurrences, addDays, dateOf, timeOf,
@@ -388,14 +388,69 @@ function renderList(box, msgs, where) {
 }
 
 function statusLine(m) {
-  if (m.status === "thinking") return h("div.status.working", {}, "✨ working on it");
   if (m.status === "error") return h("div.status.err", {}, "✨ couldn't finish");
   if (m.status === "done") return null;
-  const age = m.createdAt?.toDate ? Date.now() - m.createdAt.toDate().getTime() : 0;
-  if (age > 30000) return h("div.status.err", {}, "✨ no answer from the assistant yet");
-  setTimeout(renderMessages, 31000 - age);
-  return h("div.status.working", {}, "✨ sent to the assistant");
+  const since = m.createdAt?.toDate ? m.createdAt.toDate().getTime() : Date.now();
+  const el = h("div.status", { "data-since": since, "data-thinking": m.status === "thinking" ? "1" : "" });
+  paintStatus(el);
+  return el;
 }
+
+/** Text for a pending request's status line; the ticker below keeps it current. */
+function paintStatus(el) {
+  const secs = Math.max(0, Math.round((Date.now() - +el.dataset.since) / 1000));
+  const late = secs > PENDING_GIVE_UP_S;
+  el.classList.toggle("working", !late);
+  el.classList.toggle("err", late);
+  el.textContent = late ? "✨ no answer from the assistant yet"
+    : el.dataset.thinking ? `✨ working on it · ${secs}s`
+    : secs < 5 ? "✨ sent to the assistant"
+    : `✨ waiting for the assistant · ${secs}s`;
+}
+
+/* ------------------------------------------------- keeping the chat fresh */
+// Phones (iOS especially) can leave Firestore's live connection silently
+// stalled after the app was in the background: the assistant answers, but the
+// page never hears about it. While a request is pending, compare it with the
+// server every few seconds and restart the connection if the page is behind.
+// Also restart it when the app comes back to the foreground or goes online.
+
+const PENDING_GIVE_UP_S = 180;
+const CHECK_EVERY_MS = 5000;
+let lastCheck = 0;
+let resyncing = null;
+let lastResync = 0;
+
+function resync() {
+  if (resyncing || Date.now() - lastResync < 3000) return resyncing;
+  lastResync = Date.now();
+  resyncing = disableNetwork(db).then(() => enableNetwork(db))
+    .catch(console.error)
+    .finally(() => { resyncing = null; });
+  return resyncing;
+}
+
+async function checkPending() {
+  const pending = state.msgs.filter((m) => isRequest(m) && m.status !== "done" && m.status !== "error"
+    && m.createdAt?.toDate && Date.now() - m.createdAt.toDate().getTime() < PENDING_GIVE_UP_S * 1000);
+  // Give the live connection a few seconds before second-guessing it.
+  const oldest = pending.find((m) => Date.now() - m.createdAt.toDate().getTime() > 4000);
+  if (!oldest) return;
+  const snap = await getDocFromServer(doc(db, "messages", oldest.id));
+  if ((snap.get("status") || null) !== (oldest.status || null)) await resync();
+}
+
+setInterval(() => {
+  document.querySelectorAll(".status[data-since]").forEach(paintStatus);
+  if (!state.user || document.visibilityState !== "visible" || Date.now() - lastCheck < CHECK_EVERY_MS) return;
+  lastCheck = Date.now();
+  checkPending().catch(console.error);
+}, 1000);
+
+document.addEventListener("visibilitychange", () => {
+  if (state.user && document.visibilityState === "visible") resync();
+});
+addEventListener("online", () => state.user && resync());
 
 function attachments(m) {
   const box = h("div.attach");

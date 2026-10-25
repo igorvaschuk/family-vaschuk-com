@@ -223,8 +223,15 @@
     .slash { color: var(--leaf); font-weight: 700; }
     .status { font-size: 13px; color: var(--muted); margin-top: 2px; }
     .status.err { color: var(--accent); }
-    .working::after { content: "…"; display: inline-block; animation: blink 1.2s infinite; }
-    @keyframes blink { 50% { opacity: .2; } }
+    .working { display: flex; align-items: center; gap: 6px; }
+    .working::after {
+      content: ""; width: 26px; height: 6px; flex: none;
+      background: radial-gradient(circle closest-side, currentColor 90%, transparent) 0 50% / 8px 6px repeat-x;
+      animation: dots 1s steps(4) infinite;
+      clip-path: inset(0 100% 0 0);
+    }
+    @keyframes dots { to { clip-path: inset(0 -8px 0 0); } }
+    @media (prefers-reduced-motion: reduce) { .working::after { animation: none; clip-path: none; } }
     .notice {
       align-self: center;
       font-size: 14px;

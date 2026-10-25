@@ -3,6 +3,7 @@ const ts = (d) => ({ toDate: () => new Date(d) });
 const seed = window.__SEED || {};
 const store = Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, v.map((x) => ({ ...x }))]));
 const listeners = [];
+window.__store = store; // tests change "server" data here without notifying listeners
 let n = 1000;
 const fire = (name) => listeners.filter((l) => l.name === name).forEach((l) => l.emit());
 
@@ -40,6 +41,13 @@ export function onSnapshot(q, cb) {
   return () => listeners.splice(listeners.indexOf(l), 1);
 }
 export const getDocs = async (q) => rows(q.c ? q : { name: q.name });
+export async function getDocFromServer(ref) {
+  const d = (window.__SERVER || store)[ref.name]?.find((x) => x.id === ref.id);
+  return { exists: () => !!d, get: (k) => d?.[k] };
+}
+// Counts reconnects so tests can see the stalled-connection recovery.
+export const disableNetwork = async () => { window.__resyncs = (window.__resyncs || 0) + 1; };
+export const enableNetwork = async () => { Object.keys(store).forEach(fire); };
 export async function addDoc(ref, data) {
   const id = "m" + n++;
   (store[ref.name] ||= []).push({ id, ...data });
