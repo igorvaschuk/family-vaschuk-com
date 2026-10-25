@@ -32,8 +32,9 @@ exports.notifyFamily = onDocumentCreated(
       const batch = tokens.slice(i, i + 500);
       const res = await getMessaging().sendEachForMulticast({
         tokens: batch,
+        // Data-only: public/firebase-messaging-sw.js builds the notification.
         webpush: {
-          notification: { title: msg.name, body, icon: "/icon-192.png", badge: "/icon-192.png" },
+          data: { title: msg.name, body, id: event.params.id },
           headers: { Urgency: "high", TTL: "86400" },
         },
       });

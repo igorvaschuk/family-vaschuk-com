@@ -346,6 +346,17 @@
       await setDoc(doc(db, "tokens", pushToken), { uid: user.uid, updatedAt: serverTimestamp() });
     }
 
+    // The service worker notifies even while this page is open; once the chat
+    // is on screen, those notifications are old news.
+    async function clearNotifications() {
+      if (document.visibilityState !== "visible" || !("serviceWorker" in navigator)) return;
+      const registration = await navigator.serviceWorker.getRegistration("/");
+      (await registration?.getNotifications() || []).forEach((n) => n.close());
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (!$("chat").hidden) clearNotifications().catch(console.error);
+    });
+
     $("bell").onclick = () => setupPush(auth.currentUser, true).catch((e) => {
       console.error(e);
       hint("error", "Couldn't turn on notifications. Please try again.");
@@ -378,6 +389,7 @@
       unsubscribe = onSnapshot(q, (snap) => {
         show("chat");
         render(snap.docs.map((d) => d.data({ serverTimestamps: "estimate" })), user.uid);
+        clearNotifications().catch(console.error);
         if (!pushStarted) {
           pushStarted = true;
           setupPush(user, false).catch(console.error);
