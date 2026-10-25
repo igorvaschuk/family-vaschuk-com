@@ -13,10 +13,16 @@ service cloud.firestore {
            in get(/databases/$(database)/documents/config/members).data.emails;
     }
 
+    // channel "family" (the default) is the family chat, where text starting
+    // with "/" is a request to the assistant; channel "assistant" is the
+    // assistant tab, where everything is a request. Assistant replies, status
+    // and every assistant-owned collection below are written only by the
+    // Cloud Function (Admin SDK), never by clients.
     match /messages/{id} {
       allow read: if isMember();
       allow create: if isMember()
-        && request.resource.data.keys().hasOnly(['text', 'uid', 'name', 'photo', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['text', 'uid', 'name', 'photo', 'createdAt', 'channel'])
+        && request.resource.data.get('channel', 'family') in ['family', 'assistant']
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
@@ -37,6 +43,22 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.updatedAt == request.time;
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // Family calendar, saved places, assistant memory, and the log of every change the assistant made.
+    // Everyone in the family can see them; only the assistant changes them,
+    // so every change goes through a tracked request and lands in auditLog.
+    match /events/{id} {
+      allow read: if isMember();
+    }
+    match /places/{id} {
+      allow read: if isMember();
+    }
+    match /memory/{id} {
+      allow read: if isMember();
+    }
+    match /auditLog/{id} {
+      allow read: if isMember();
     }
   }
 }

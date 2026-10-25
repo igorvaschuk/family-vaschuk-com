@@ -20,16 +20,24 @@ self.addEventListener("push", (event) => {
     icon: "/icon-192.png",
     badge: "/icon-192.png",
     tag: data.id || undefined,
+    // "Time to leave" reminders carry a Google Maps directions link.
+    data: { url: data.url || "/" },
   }));
 });
 
-// Focus an open chat window, or open one, on this worker's origin.
+// Reminders open their directions link; chat pushes focus an open chat
+// window, or open one, on this worker's origin.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const url = event.notification.data?.url || "/";
   event.waitUntil((async () => {
+    if (!url.startsWith("/")) return clients.openWindow(url);
     const windows = await clients.matchAll({ type: "window", includeUncontrolled: true });
     const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
-    if (open) return open.focus();
-    return clients.openWindow("/");
+    if (open) {
+      if (url !== "/") open.navigate?.(url);
+      return open.focus();
+    }
+    return clients.openWindow(url);
   })());
 });
