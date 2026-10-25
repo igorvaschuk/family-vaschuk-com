@@ -1,1 +1,23 @@
-{"projects":{"default":"vaschuk-com"}}
+{
+  "projects": {
+    "default": "vaschuk-com",
+    "prod": "vaschuk-com",
+    "dev": "family-dev-vaschuk-com"
+  },
+  "targets": {
+    "vaschuk-com": {
+      "hosting": {
+        "family": [
+          "family-vaschuk"
+        ]
+      }
+    },
+    "family-dev-vaschuk-com": {
+      "hosting": {
+        "family": [
+          "family-dev-vaschuk-com"
+        ]
+      }
+    }
+  }
+}

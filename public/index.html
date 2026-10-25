@@ -97,10 +97,11 @@
     .error { color: var(--accent); font-size: 15px; margin-top: 16px; min-height: 1.5em; }
     footer { font-size: 15px; color: var(--muted); }
 
-    /* Chat */
-    .chat {
+    /* App shell */
+    .app {
       height: 100%;
-      max-width: 760px;
+      height: 100dvh;
+      max-width: 860px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
@@ -109,8 +110,8 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--edge);
+      padding: 10px 16px;
+      padding-top: calc(10px + env(safe-area-inset-top));
       background: var(--bg);
     }
     .top h2 {
@@ -118,9 +119,29 @@
       font-size: 22px;
       margin: 0;
       flex: 1;
+      white-space: nowrap;
     }
     .top h2 span { color: var(--accent); }
-    .me { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); }
+    /* Dev environment strip (see js/config.js) */
+    .envbar {
+      background: #5f6fb8;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+      padding: 5px 16px;
+      padding-top: calc(5px + env(safe-area-inset-top));
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body:has(.envbar:not([hidden])) .center { min-height: calc(100% - 22px); }
+    body:has(.envbar:not([hidden])) :is(.chat, .app) { height: calc(100% - 22px - env(safe-area-inset-top)); }
+    body:has(.envbar:not([hidden])) .top { padding-top: 10px; }
+    .me { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); min-width: 0; }
+    #me-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 520px) { #me-name { display: none; } }
     .avatar {
       width: 32px;
       height: 32px;
@@ -135,16 +156,46 @@
       font-weight: 700;
       font-size: 14px;
     }
+    .avatar.bot { background: color-mix(in srgb, var(--leaf) 25%, var(--card)); font-size: 17px; }
+    .tabs {
+      display: flex;
+      gap: 2px;
+      padding: 0 8px;
+      border-bottom: 1px solid var(--edge);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      flex: 1 0 auto;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      padding: 8px 10px 9px;
+      font-size: 15px;
+      font-weight: 700;
+      border-bottom: 3px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+    .tab .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    @media (max-width: 480px) { .tab { flex-direction: column; gap: 0; font-size: 12px; padding: 6px 4px 7px; } .tab .ico { font-size: 19px; line-height: 1.2; } }
+    .view { flex: 1; min-height: 0; overflow-y: auto; }
+    .pad { padding: 16px; }
+
+    /* Messages */
     .messages {
-      flex: 1;
-      overflow-y: auto;
       padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
-    .empty { margin: auto; color: var(--muted); text-align: center; }
-    .msg { display: flex; gap: 10px; align-items: flex-end; max-width: 85%; }
+    .empty { margin: auto; color: var(--muted); text-align: center; padding: 24px 8px; }
+    .msg { display: flex; gap: 10px; align-items: flex-end; max-width: 88%; }
     .msg.mine { align-self: flex-end; flex-direction: row-reverse; }
     .bubble {
       background: var(--card);
@@ -154,17 +205,163 @@
       min-width: 0;
     }
     .msg.mine .bubble { background: var(--mine); }
+    .msg.cmd .bubble { border-style: dashed; border-color: color-mix(in srgb, var(--leaf) 60%, var(--edge)); }
+    .msg.bot .bubble { background: color-mix(in srgb, var(--leaf) 10%, var(--card)); border-color: color-mix(in srgb, var(--leaf) 35%, var(--edge)); }
     .meta { font-size: 13px; color: var(--muted); }
     .meta b { color: var(--ink); font-weight: 700; }
+    .tag {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 0 7px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--leaf) 18%, transparent);
+      color: var(--ink);
+      margin-left: 4px;
+    }
     .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .slash { color: var(--leaf); font-weight: 700; }
+    .status { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .status.err { color: var(--accent); }
+    .working::after { content: "…"; display: inline-block; animation: blink 1.2s infinite; }
+    @keyframes blink { 50% { opacity: .2; } }
+    .notice {
+      align-self: center;
+      font-size: 14px;
+      color: var(--muted);
+      background: color-mix(in srgb, var(--leaf) 10%, transparent);
+      border-radius: 12px;
+      padding: 6px 12px;
+      max-width: 92%;
+      text-align: center;
+    }
+    .attach { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+
+    /* Buttons & chips */
+    .btn {
+      border: 1px solid var(--edge);
+      background: var(--card);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.go { background: var(--leaf); border-color: var(--leaf); color: #fff; }
+    .btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--c, var(--muted)) 18%, transparent);
+    }
+    .chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); }
+
+    /* Event cards */
+    .ev {
+      display: flex;
+      gap: 10px;
+      background: var(--card);
+      border: 1px solid var(--edge);
+      border-radius: 14px;
+      padding: 10px 12px;
+    }
+    .ev .bar { width: 4px; border-radius: 4px; background: var(--c, var(--accent)); flex: none; }
+    .ev .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .ev .title { font-weight: 700; }
+    .ev .when { font-size: 14px; color: var(--muted); }
+    .ev .notes { font-size: 14px; color: var(--muted); white-space: pre-wrap; }
+    .ev.gone { opacity: .6; }
+    .placelink { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 700; font-size: 14px; text-align: left; }
+
+    /* Calendar */
+    .calbar {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--bg);
+      padding: 12px 16px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-bottom: 1px solid var(--edge);
+    }
+    .calbar .row { justify-content: space-between; flex-wrap: nowrap; }
+    .calbar .row.wrap { justify-content: flex-start; flex-wrap: wrap; }
+    .calbar h3 { margin: 0; font-family: "Fraunces", Georgia, serif; font-size: 19px; text-align: center; flex: 1; }
+    .day { padding: 10px 16px 6px; display: flex; flex-direction: column; gap: 8px; }
+    .day h4 { margin: 0; font-size: 15px; color: var(--muted); }
+    .day.today h4 { color: var(--accent); }
+    .day .none { font-size: 14px; color: var(--muted); margin: -4px 0 0; }
+
+    /* Map */
+    #view-map { display: flex; flex-direction: column; }
+    #view-map[hidden] { display: none; }
+    #map { height: 52vh; min-height: 260px; flex: none; background: var(--edge); }
+    .places { padding: 12px 16px 24px; display: flex; flex-direction: column; gap: 10px; }
+    .place {
+      background: var(--card);
+      border: 1px solid var(--edge);
+      border-radius: 14px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .place .name { font-weight: 700; }
+    .place .addr, .place .next { font-size: 14px; color: var(--muted); }
+    .place.focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+    .leaflet-popup-content { font: 15px/1.4 "Nunito", system-ui, sans-serif; margin: 10px 12px; }
+    .leaflet-popup-content .row { margin-top: 6px; }
+
+    /* Memory */
+    .mem h3 { font-family: "Fraunces", Georgia, serif; font-size: 19px; margin: 20px 0 8px; }
+    .mem h3:first-child { margin-top: 0; }
+    .mem ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .mem li { background: var(--card); border: 1px solid var(--edge); border-radius: 12px; padding: 8px 12px; }
+    .mem .sub { font-size: 13px; color: var(--muted); }
+    .mem .lead { color: var(--muted); margin: 0 0 12px; }
+    .stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .stat { background: var(--card); border: 1px solid var(--edge); border-radius: 12px; padding: 6px 12px; font-size: 14px; }
+    .stat b { font-size: 18px; margin-right: 4px; }
+
+    /* Composer */
     .compose {
       display: flex;
       gap: 8px;
-      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      align-items: flex-end;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
       border-top: 1px solid var(--edge);
+      background: var(--bg);
     }
+    .mode {
+      flex: none;
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      border: 1px solid var(--edge);
+      background: var(--card);
+      font-size: 20px;
+      line-height: 1;
+    }
+    .mode:hover { border-color: var(--accent); }
+    .field { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .field .to { font-size: 12px; font-weight: 700; color: var(--leaf); padding-left: 4px; }
     .compose textarea {
-      flex: 1;
+      width: 100%;
       resize: none;
       font: inherit;
       color: var(--ink);
@@ -173,16 +370,21 @@
       border-radius: 14px;
       padding: 10px 12px;
       max-height: 140px;
+      min-height: 44px;
     }
+    .compose.ask textarea { border-color: var(--leaf); }
     .compose textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    .compose.ask textarea:focus { outline-color: var(--leaf); }
     .send {
       border: 0;
       border-radius: 14px;
       padding: 0 18px;
+      height: 44px;
       background: var(--accent);
       color: #fff;
       font-weight: 700;
     }
+    .compose.ask .send { background: var(--leaf); }
     .send:disabled { opacity: .5; cursor: default; }
     .bell {
       border: 1px solid var(--edge);
@@ -192,6 +394,7 @@
       padding: 4px 12px;
       font-size: 14px;
       font-weight: 600;
+      white-space: nowrap;
     }
     .bell:hover { border-color: var(--accent); }
     .hint {
@@ -206,9 +409,24 @@
       align-items: flex-start;
     }
     .hint span { flex: 1; }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(84px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      background: var(--ink);
+      color: var(--bg);
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 700;
+      z-index: 1000;
+      box-shadow: 0 8px 24px rgba(0,0,0,.2);
+    }
   </style>
 </head>
 <body>
+  <div class="envbar" data-env-badge hidden></div>
   <!-- Signed out -->
   <div class="center" id="welcome" hidden>
     <main class="card">
@@ -240,8 +458,8 @@
     </main>
   </div>
 
-  <!-- Chat -->
-  <div class="chat" id="chat" hidden>
+  <!-- Signed in: chat, assistant, calendar, map, memory -->
+  <div class="app" id="app" hidden>
     <header class="top">
       <h2>The <span>Vaschuk</span> Family</h2>
       <div class="me">
@@ -251,238 +469,43 @@
         <button class="link" id="signout">Sign out</button>
       </div>
     </header>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" data-tab="family"><span class="ico">💬</span>Family</button>
+      <button class="tab" role="tab" data-tab="assistant"><span class="ico">✨</span>Assistant</button>
+      <button class="tab" role="tab" data-tab="calendar"><span class="ico">📅</span>Calendar</button>
+      <button class="tab" role="tab" data-tab="map"><span class="ico">📍</span>Map</button>
+      <button class="tab" role="tab" data-tab="memory"><span class="ico">🧠</span>Memory</button>
+    </nav>
     <p class="hint" id="hint" hidden>
       <span id="hint-text"></span>
       <button class="link" id="hint-close" aria-label="Dismiss">✕</button>
     </p>
-    <section class="messages" id="messages" aria-live="polite">
-      <div class="empty" id="empty">No messages yet. Say hello! 👋</div>
+
+    <section class="view" id="view-family" role="tabpanel" aria-label="Family chat">
+      <div class="messages" id="family-list" aria-live="polite"></div>
     </section>
+    <section class="view" id="view-assistant" role="tabpanel" aria-label="Assistant" hidden>
+      <div class="messages" id="assistant-list" aria-live="polite"></div>
+    </section>
+    <section class="view" id="view-calendar" role="tabpanel" aria-label="Calendar" hidden></section>
+    <section class="view" id="view-map" role="tabpanel" aria-label="Map" hidden>
+      <div id="map"></div>
+      <div class="places" id="place-list"></div>
+    </section>
+    <section class="view" id="view-memory" role="tabpanel" aria-label="Memory" hidden>
+      <div class="pad mem" id="memory-body"></div>
+    </section>
+
     <form class="compose" id="compose">
-      <textarea id="text" rows="1" maxlength="2000" placeholder="Write a message…" aria-label="Message" required></textarea>
+      <button class="mode" id="mode" type="button"></button>
+      <div class="field">
+        <span class="to" id="to" hidden>✨ To the assistant</span>
+        <textarea id="text" rows="1" maxlength="2000" aria-label="Message" required></textarea>
+      </div>
       <button class="send" id="send" type="submit">Send</button>
     </form>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-    import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-    import { getFirestore, collection, doc, query, orderBy, limitToLast, onSnapshot, addDoc, setDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-    import { getMessaging, getToken, deleteToken, isSupported } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging.js";
-
-    // Public web config (not a secret; access is enforced by firestore.rules).
-    const app = initializeApp({
-      apiKey: "AIzaSyC1XotJSjFhLQQo3i8KNO7xpLHeO8URHOY",
-      authDomain: "vaschuk-com.firebaseapp.com",
-      projectId: "vaschuk-com",
-      appId: "1:1059072294008:web:8272aff3b02d2d7129818d",
-      messagingSenderId: "1059072294008",
-    });
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    const messagesRef = collection(db, "messages");
-
-    const $ = (id) => document.getElementById(id);
-    const screens = ["welcome", "uninvited", "chat"];
-    const show = (name) => screens.forEach((s) => ($(s).hidden = s !== name));
-
-    let unsubscribe = null;
-
-    $("signin").onclick = async () => {
-      $("signin-error").textContent = "";
-      try {
-        await signInWithPopup(auth, new GoogleAuthProvider());
-      } catch (e) {
-        if (e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") {
-          $("signin-error").textContent = "Couldn't sign in. Please try again.";
-          console.error(e);
-        }
-      }
-    };
-    $("signout").onclick = $("switch").onclick = async () => {
-      // Stop this device getting the family's notifications after sign-out.
-      if (pushToken) {
-        try {
-          await deleteDoc(doc(db, "tokens", pushToken));
-          await deleteToken(messaging);
-        } catch (e) {
-          console.error(e);
-        }
-        pushToken = null;
-      }
-      signOut(auth);
-    };
-
-    // Push notifications (Firebase Cloud Messaging). Each device that opts in
-    // stores its token in tokens/{token}; a Cloud Function (functions/index.js)
-    // pushes every new message to all tokens except the sender's.
-    const VAPID_KEY = "BHwxsnOIOUep77eJSg59BF5ZnboXI1tyOlCRwJbxdWj-yD-pluV1ax7kkLex0vAOiDveY2guqsWpPJ4JHKJBTPs";
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-    let messaging = null;
-    let pushToken = null;
-    let pushStarted = false;
-    const pushReady = isSupported()
-      .then((ok) => ok && "Notification" in window && (messaging = getMessaging(app), true))
-      .catch(() => false);
-
-    async function setupPush(user, ask) {
-      if (!(await pushReady)) {
-        if (isIOS && !standalone) hint("ios", "To get notifications on iPhone: tap Share, then “Add to Home Screen”, and open Family from your Home Screen.");
-        return;
-      }
-      if (Notification.permission === "denied") {
-        $("bell").hidden = true;
-        hint("denied", "Notifications are blocked for this site. Allow them in your browser's site settings to get new-message alerts.");
-        return;
-      }
-      if (Notification.permission !== "granted") {
-        if (!ask) return void ($("bell").hidden = false);
-        if (await Notification.requestPermission() !== "granted") return void ($("bell").hidden = true);
-      }
-      $("bell").hidden = true;
-      const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-      pushToken = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
-      await setDoc(doc(db, "tokens", pushToken), { uid: user.uid, updatedAt: serverTimestamp() });
-    }
-
-    // The service worker notifies even while this page is open; once the chat
-    // is on screen, those notifications are old news.
-    async function clearNotifications() {
-      if (document.visibilityState !== "visible" || !("serviceWorker" in navigator)) return;
-      const registration = await navigator.serviceWorker.getRegistration("/");
-      (await registration?.getNotifications() || []).forEach((n) => n.close());
-    }
-    document.addEventListener("visibilitychange", () => {
-      if (!$("chat").hidden) clearNotifications().catch(console.error);
-    });
-
-    $("bell").onclick = () => setupPush(auth.currentUser, true).catch((e) => {
-      console.error(e);
-      hint("error", "Couldn't turn on notifications. Please try again.");
-    });
-
-    function hint(key, text) {
-      try { if (localStorage.getItem("hint-dismissed-" + key)) return; } catch {}
-      $("hint-text").textContent = text;
-      $("hint").dataset.key = key;
-      $("hint").hidden = false;
-    }
-    $("hint-close").onclick = () => {
-      $("hint").hidden = true;
-      try { localStorage.setItem("hint-dismissed-" + $("hint").dataset.key, "1"); } catch {}
-    };
-
-    onAuthStateChanged(auth, (user) => {
-      unsubscribe?.();
-      unsubscribe = null;
-      pushStarted = false;
-      $("bell").hidden = $("hint").hidden = true;
-      if (!user) return show("welcome");
-
-      $("me-name").textContent = user.displayName || user.email;
-      $("me-avatar").replaceChildren(avatar(user.photoURL, user.displayName || user.email));
-
-      // The security rules only let family members read, so a permission
-      // error here means this account isn't on the list.
-      const q = query(messagesRef, orderBy("createdAt"), limitToLast(200));
-      unsubscribe = onSnapshot(q, (snap) => {
-        show("chat");
-        render(snap.docs.map((d) => d.data({ serverTimestamps: "estimate" })), user.uid);
-        clearNotifications().catch(console.error);
-        if (!pushStarted) {
-          pushStarted = true;
-          setupPush(user, false).catch(console.error);
-        }
-      }, (err) => {
-        if (err.code === "permission-denied") {
-          $("uninvited-email").textContent = user.email;
-          show("uninvited");
-        } else {
-          console.error(err);
-        }
-      });
-    });
-
-    function avatar(url, name) {
-      if (url) {
-        const img = document.createElement("img");
-        img.className = "avatar";
-        img.src = url;
-        img.alt = "";
-        img.referrerPolicy = "no-referrer";
-        return img;
-      }
-      const span = document.createElement("span");
-      span.className = "avatar";
-      span.textContent = (name || "?").trim()[0].toUpperCase();
-      return span;
-    }
-
-    const emptyNote = $("empty");
-    const timeFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-
-    function render(msgs, myUid) {
-      const box = $("messages");
-      const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-      box.replaceChildren();
-      if (!msgs.length) box.append(emptyNote);
-      for (const m of msgs) {
-        const row = document.createElement("div");
-        row.className = "msg" + (m.uid === myUid ? " mine" : "");
-        const bubble = document.createElement("div");
-        bubble.className = "bubble";
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        const who = document.createElement("b");
-        who.textContent = m.name;
-        meta.append(who, " · " + (m.createdAt ? timeFmt.format(m.createdAt.toDate()) : ""));
-        const text = document.createElement("div");
-        text.className = "text";
-        text.textContent = m.text;
-        bubble.append(meta, text);
-        row.append(avatar(m.photo, m.name), bubble);
-        box.append(row);
-      }
-      if (nearBottom || msgs.at(-1)?.uid === myUid) box.scrollTop = box.scrollHeight;
-    }
-
-    const input = $("text");
-    input.addEventListener("input", () => {
-      input.style.height = "auto";
-      input.style.height = input.scrollHeight + "px";
-    });
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-        e.preventDefault();
-        $("compose").requestSubmit();
-      }
-    });
-
-    $("compose").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      const user = auth.currentUser;
-      if (!text || !user) return;
-      $("send").disabled = true;
-      try {
-        await addDoc(messagesRef, {
-          text,
-          uid: user.uid,
-          name: user.displayName || user.email,
-          photo: user.photoURL || "",
-          createdAt: serverTimestamp(),
-        });
-        input.value = "";
-        input.style.height = "auto";
-      } catch (err) {
-        console.error(err);
-        alert("Message didn't send. Please try again.");
-      } finally {
-        $("send").disabled = false;
-        input.focus();
-      }
-    });
-  </script>
+  <script type="module" src="/js/app.js"></script>
 </body>
 </html>

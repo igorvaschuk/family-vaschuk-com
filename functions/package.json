@@ -1,6 +1,7 @@
 {
   "name": "family-vaschuk-functions",
   "private": true,
+  "type": "module",
   "main": "index.js",
   "engines": { "node": "22" },
   "dependencies": {
