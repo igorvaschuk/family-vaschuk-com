@@ -120,6 +120,23 @@
       flex: 1;
     }
     .top h2 span { color: var(--accent); }
+    /* Dev environment strip (see js/config.js) */
+    .envbar {
+      background: #5f6fb8;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+      padding: 5px 16px;
+      padding-top: calc(5px + env(safe-area-inset-top));
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body:has(.envbar:not([hidden])) .center { min-height: calc(100% - 22px); }
+    body:has(.envbar:not([hidden])) :is(.chat, .app) { height: calc(100% - 22px - env(safe-area-inset-top)); }
+    body:has(.envbar:not([hidden])) .top { padding-top: 10px; }
     .me { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); }
     .avatar {
       width: 32px;
@@ -209,6 +226,7 @@
   </style>
 </head>
 <body>
+  <div class="envbar" data-env-badge hidden></div>
   <!-- Signed out -->
   <div class="center" id="welcome" hidden>
     <main class="card">
@@ -269,15 +287,10 @@
     import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
     import { getFirestore, collection, doc, query, orderBy, limitToLast, onSnapshot, addDoc, setDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
     import { getMessaging, getToken, deleteToken, isSupported } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging.js";
+    // Production or dev project, picked by where the page is hosted.
+    import { firebaseConfig, VAPID_KEY } from "/js/config.js";
 
-    // Public web config (not a secret; access is enforced by firestore.rules).
-    const app = initializeApp({
-      apiKey: "AIzaSyC1XotJSjFhLQQo3i8KNO7xpLHeO8URHOY",
-      authDomain: "vaschuk-com.firebaseapp.com",
-      projectId: "vaschuk-com",
-      appId: "1:1059072294008:web:8272aff3b02d2d7129818d",
-      messagingSenderId: "1059072294008",
-    });
+    const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
     const messagesRef = collection(db, "messages");
@@ -316,14 +329,13 @@
     // Push notifications (Firebase Cloud Messaging). Each device that opts in
     // stores its token in tokens/{token}; a Cloud Function (functions/index.js)
     // pushes every new message to all tokens except the sender's.
-    const VAPID_KEY = "BHwxsnOIOUep77eJSg59BF5ZnboXI1tyOlCRwJbxdWj-yD-pluV1ax7kkLex0vAOiDveY2guqsWpPJ4JHKJBTPs";
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
     let messaging = null;
     let pushToken = null;
     let pushStarted = false;
     const pushReady = isSupported()
-      .then((ok) => ok && "Notification" in window && (messaging = getMessaging(app), true))
+      .then((ok) => ok && !!VAPID_KEY && "Notification" in window && (messaging = getMessaging(app), true))
       .catch(() => false);
 
     async function setupPush(user, ask) {

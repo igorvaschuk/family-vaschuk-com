@@ -35,7 +35,7 @@ It uses the `family` functions codebase, so deploying it never touches functions
 
 Firebase Auth (Google provider) is enabled for the project, with `family.vaschuk.com` and `family-vaschuk.web.app` as authorized domains. Firestore rules are project-wide, so if another site in `vaschuk-com` ever uses Firestore, its rules have to be merged into this file.
 
-Static site in `public/`, no build step (Firebase JS SDK loaded from gstatic). Deployed to a separate Firebase Hosting site, `family-vaschuk`, in the `vaschuk-com` Firebase project.
+Static site in `public/`, no build step (Firebase JS SDK loaded from gstatic). Deployed to a separate Firebase Hosting site, `family-vaschuk`, in the `vaschuk-com` Firebase project (hosting target `family`).
 DNS: CNAME `family` → `family-vaschuk.web.app` at GoDaddy.
 
 ## Deploy
@@ -51,6 +51,24 @@ Firebase CLI is installed globally (`npm i -g firebase-tools`) and needs Node 20
 ```sh
 python3 -m http.server 8000 --directory public
 ```
+
+## Dev environment: family-dev.vaschuk.com
+
+A separate Firebase project, `family-dev-vaschuk-com`, with its own sign-in allowlist, Firestore data, rules, Cloud Functions and Claude API key, so testers never touch the real family chat, calendar or phones. Pages show a **DEV · branch · commit** badge.
+
+- **Every push to a branch other than `main`** deploys that branch to dev: site, rules and functions ([.github/workflows/firebase-dev.yml](.github/workflows/firebase-dev.yml)). The last push wins. To put a specific branch back on dev: Actions → *Deploy branch to family-dev* → Run workflow → pick the branch.
+- Merging to `main` deploys production as before. Production functions are still deployed by hand.
+- The same code serves both: [public/js/config.js](public/js/config.js) reads the hosting project's config from `/__/firebase/init.json`. `.firebaserc` maps the `family` hosting target to `family-vaschuk` (prod) and `family-dev-vaschuk-com` (dev).
+- Add a tester: `PROJECT=family-dev-vaschuk-com bash scripts/add-member.sh tester@gmail.com`
+- Deploy dev by hand: `firebase deploy --only hosting,firestore:rules,functions:family --project dev`
+
+One-time setup (owner, with gcloud, firebase and gh logged in):
+
+```sh
+ANTHROPIC_API_KEY=sk-ant-... bash scripts/setup-dev.sh BILLING_ACCOUNT_ID you@gmail.com olga@gmail.com
+```
+
+It creates the project, Firestore, the web app, the tester allowlist, the API key secret, and keyless GitHub deploys scoped to the dev project, then lists the console-only steps: enable Google sign-in, add `family-dev.vaschuk.com` as an authorized domain and as a custom hosting domain (DNS at GoDaddy), and optionally generate a web-push key for dev notifications.
 
 ## Auto-deploy
 
