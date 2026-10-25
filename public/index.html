@@ -8,6 +8,10 @@
   <meta property="og:title" content="The Vaschuk Family">
   <meta property="og:description" content="Our family home on the web.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏡</text></svg>">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="Family">
+  <meta name="theme-color" content="#c8643b">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
@@ -180,6 +184,28 @@
       font-weight: 700;
     }
     .send:disabled { opacity: .5; cursor: default; }
+    .bell {
+      border: 1px solid var(--edge);
+      background: var(--card);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .bell:hover { border-color: var(--accent); }
+    .hint {
+      margin: 0;
+      padding: 10px 16px;
+      font-size: 15px;
+      color: var(--muted);
+      background: color-mix(in srgb, var(--leaf) 12%, transparent);
+      border-bottom: 1px solid var(--edge);
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .hint span { flex: 1; }
   </style>
 </head>
 <body>
@@ -219,11 +245,16 @@
     <header class="top">
       <h2>The <span>Vaschuk</span> Family</h2>
       <div class="me">
+        <button class="bell" id="bell" hidden>🔔 Notify me</button>
         <span id="me-name"></span>
         <span id="me-avatar"></span>
         <button class="link" id="signout">Sign out</button>
       </div>
     </header>
+    <p class="hint" id="hint" hidden>
+      <span id="hint-text"></span>
+      <button class="link" id="hint-close" aria-label="Dismiss">✕</button>
+    </p>
     <section class="messages" id="messages" aria-live="polite">
       <div class="empty" id="empty">No messages yet. Say hello! 👋</div>
     </section>
@@ -236,7 +267,8 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
     import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-    import { getFirestore, collection, query, orderBy, limitToLast, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+    import { getFirestore, collection, doc, query, orderBy, limitToLast, onSnapshot, addDoc, setDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+    import { getMessaging, getToken, deleteToken, isSupported } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging.js";
 
     // Public web config (not a secret; access is enforced by firestore.rules).
     const app = initializeApp({
@@ -267,11 +299,74 @@
         }
       }
     };
-    $("signout").onclick = $("switch").onclick = () => signOut(auth);
+    $("signout").onclick = $("switch").onclick = async () => {
+      // Stop this device getting the family's notifications after sign-out.
+      if (pushToken) {
+        try {
+          await deleteDoc(doc(db, "tokens", pushToken));
+          await deleteToken(messaging);
+        } catch (e) {
+          console.error(e);
+        }
+        pushToken = null;
+      }
+      signOut(auth);
+    };
+
+    // Push notifications (Firebase Cloud Messaging). Each device that opts in
+    // stores its token in tokens/{token}; a Cloud Function (functions/index.js)
+    // pushes every new message to all tokens except the sender's.
+    const VAPID_KEY = "BHwxsnOIOUep77eJSg59BF5ZnboXI1tyOlCRwJbxdWj-yD-pluV1ax7kkLex0vAOiDveY2guqsWpPJ4JHKJBTPs";
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    let messaging = null;
+    let pushToken = null;
+    let pushStarted = false;
+    const pushReady = isSupported()
+      .then((ok) => ok && "Notification" in window && (messaging = getMessaging(app), true))
+      .catch(() => false);
+
+    async function setupPush(user, ask) {
+      if (!(await pushReady)) {
+        if (isIOS && !standalone) hint("ios", "To get notifications on iPhone: tap Share, then “Add to Home Screen”, and open Family from your Home Screen.");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        $("bell").hidden = true;
+        hint("denied", "Notifications are blocked for this site. Allow them in your browser's site settings to get new-message alerts.");
+        return;
+      }
+      if (Notification.permission !== "granted") {
+        if (!ask) return void ($("bell").hidden = false);
+        if (await Notification.requestPermission() !== "granted") return void ($("bell").hidden = true);
+      }
+      $("bell").hidden = true;
+      const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+      pushToken = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+      await setDoc(doc(db, "tokens", pushToken), { uid: user.uid, updatedAt: serverTimestamp() });
+    }
+
+    $("bell").onclick = () => setupPush(auth.currentUser, true).catch((e) => {
+      console.error(e);
+      hint("error", "Couldn't turn on notifications. Please try again.");
+    });
+
+    function hint(key, text) {
+      try { if (localStorage.getItem("hint-dismissed-" + key)) return; } catch {}
+      $("hint-text").textContent = text;
+      $("hint").dataset.key = key;
+      $("hint").hidden = false;
+    }
+    $("hint-close").onclick = () => {
+      $("hint").hidden = true;
+      try { localStorage.setItem("hint-dismissed-" + $("hint").dataset.key, "1"); } catch {}
+    };
 
     onAuthStateChanged(auth, (user) => {
       unsubscribe?.();
       unsubscribe = null;
+      pushStarted = false;
+      $("bell").hidden = $("hint").hidden = true;
       if (!user) return show("welcome");
 
       $("me-name").textContent = user.displayName || user.email;
@@ -283,6 +378,10 @@
       unsubscribe = onSnapshot(q, (snap) => {
         show("chat");
         render(snap.docs.map((d) => d.data({ serverTimestamps: "estimate" })), user.uid);
+        if (!pushStarted) {
+          pushStarted = true;
+          setupPush(user, false).catch(console.error);
+        }
       }, (err) => {
         if (err.code === "permission-denied") {
           $("uninvited-email").textContent = user.email;

@@ -27,5 +27,16 @@ service cloud.firestore {
         && request.resource.data.photo.size() <= 1000
         && request.resource.data.createdAt == request.time;
     }
+
+    // Push tokens, one doc per device (doc id = FCM token). Only the Cloud
+    // Function reads them. A member can claim a token (devices can switch
+    // accounts) and delete their own.
+    match /tokens/{token} {
+      allow create, update: if isMember()
+        && request.resource.data.keys().hasOnly(['uid', 'updatedAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
   }
 }

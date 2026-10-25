@@ -14,6 +14,24 @@ bash scripts/add-member.sh someone@gmail.com
 
 To remove someone, edit `config/members` in the [Firebase console](https://console.firebase.google.com/project/vaschuk-com/firestore/data/~2Fconfig~2Fmembers).
 
+### Notifications
+
+Members tap **🔔 Notify me** in the chat header to get a push notification on that device for every new message (except their own). On iPhone/iPad (iOS 16.4+) this only works after **Share → Add to Home Screen** and opening Family from the Home Screen; the page shows that hint. Android and desktop browsers work straight from the site.
+
+- Each opted-in device stores its FCM token in Firestore `tokens/{token}`; signing out removes it.
+- [functions/index.js](functions/index.js) (`notifyFamily`, us-central1) fires on every new `messages` doc, sends to all tokens except the sender's, and deletes tokens FCM reports as dead.
+- The web push (VAPID) key in `public/index.html` is public; it was generated under Project settings → Cloud Messaging.
+- App icons: `python scripts/make-icons.py` regenerates `public/*.png` from the house logo.
+
+The function is deployed by hand, not by CI (it would need much broader deploy permissions):
+
+```sh
+cd functions && npm install && cd ..
+firebase deploy --only functions:family --project vaschuk-com
+```
+
+It uses the `family` functions codebase, so deploying it never touches functions other sites in `vaschuk-com` may add.
+
 Firebase Auth (Google provider) is enabled for the project, with `family.vaschuk.com` and `family-vaschuk.web.app` as authorized domains. Firestore rules are project-wide, so if another site in `vaschuk-com` ever uses Firestore, its rules have to be merged into this file.
 
 Static site in `public/`, no build step (Firebase JS SDK loaded from gstatic). Deployed to a separate Firebase Hosting site, `family-vaschuk`, in the `vaschuk-com` Firebase project.
