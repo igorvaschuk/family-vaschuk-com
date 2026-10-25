@@ -34,7 +34,7 @@
         ]
       },
       {
-        "source": "**/@(*.html|firebase-messaging-sw.js|manifest.webmanifest)",
+        "source": "**/@(*.html|*.js|manifest.webmanifest)",
         "headers": [
           {
             "key": "Cache-Control",

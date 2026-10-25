@@ -9,7 +9,7 @@ const fire = (name) => listeners.filter((l) => l.name === name).forEach((l) => l
 
 export const initializeApp = () => ({});
 // auth
-const user = { uid: "u-igor", displayName: "Igor Vaschuk", email: "igor@example.com", photoURL: "" };
+const user = { uid: "u-igor", displayName: "Igor Vaschuk", email: "igor@example.com", photoURL: "", getIdToken: async () => "t" };
 const auth = { currentUser: user };
 export const getAuth = () => auth;
 export class GoogleAuthProvider {}
@@ -41,13 +41,19 @@ export function onSnapshot(q, cb) {
   return () => listeners.splice(listeners.indexOf(l), 1);
 }
 export const getDocs = async (q) => rows(q.c ? q : { name: q.name });
-export async function getDocFromServer(ref) {
-  const d = (window.__SERVER || store)[ref.name]?.find((x) => x.id === ref.id);
-  return { exists: () => !!d, get: (k) => d?.[k] };
-}
+// The page checks pending requests over the REST API; answer from the store.
+const realFetch = window.fetch.bind(window);
+window.fetch = async (url, opts) => {
+  const m = String(url).match(/firestore\.googleapis\.com\/.*\/documents\/messages\/([^?]+)/);
+  if (!m) return realFetch(url, opts);
+  if (window.__restDown) throw new DOMException("aborted", "AbortError");
+  const d = store.messages?.find((x) => x.id === m[1]);
+  return new Response(JSON.stringify({ fields: d?.status ? { status: { stringValue: d.status } } : {} }));
+};
 // Counts reconnects so tests can see the stalled-connection recovery.
 export const disableNetwork = async () => { window.__resyncs = (window.__resyncs || 0) + 1; };
-export const enableNetwork = async () => { Object.keys(store).forEach(fire); };
+// window.__stuck: reconnecting doesn't help (the page should then reload).
+export const enableNetwork = async () => { if (!window.__stuck) Object.keys(store).forEach(fire); };
 export async function addDoc(ref, data) {
   const id = "m" + n++;
   (store[ref.name] ||= []).push({ id, ...data });
