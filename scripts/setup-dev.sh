@@ -23,7 +23,7 @@ step() { printf '\n==> %s\n' "$*"; }
 
 step "Project"
 gcloud projects describe "$PROJECT" --format='value(projectId)' >/dev/null 2>&1 \
-  || gcloud projects create "$PROJECT" --name="Vaschuk Family (dev)"
+  || gcloud projects create "$PROJECT" --name="Vaschuk Family dev"
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')
 gcloud billing projects link "$PROJECT" --billing-account="$BILLING" --format=none
 
