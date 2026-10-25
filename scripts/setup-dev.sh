@@ -77,6 +77,16 @@ for ROLE in roles/editor roles/firebase.admin roles/cloudfunctions.admin roles/r
   gcloud projects add-iam-policy-binding "$PROJECT" \
     --member="serviceAccount:${SA}" --role="$ROLE" --condition=None --format=none
 done
+# Service agents need these before the first functions deploy, and only an
+# owner can grant them (the deployer can't).
+gcloud beta services identity create --service=pubsub.googleapis.com --project "$PROJECT" --format=none
+gcloud beta services identity create --service=eventarc.googleapis.com --project "$PROJECT" --format=none
+gcloud projects add-iam-policy-binding "$PROJECT" --condition=None --format=none \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" --role=roles/iam.serviceAccountTokenCreator
+for ROLE in roles/run.invoker roles/eventarc.eventReceiver; do
+  gcloud projects add-iam-policy-binding "$PROJECT" --condition=None --format=none \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" --role="$ROLE"
+done
 gcloud iam service-accounts add-iam-policy-binding "$SA" \
   --project "$PROJECT" --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/${REPO}" \
