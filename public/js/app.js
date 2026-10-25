@@ -552,11 +552,13 @@ function renderCalendar() {
 /* -------------------------------------------------------------------- map */
 
 let leaflet = null; // { L, map, layer }
+// One shared load: renderMap runs on every snapshot, and a second <script>
+// would replace window.L with a copy the existing map doesn't recognize.
+let leafletLoad = null;
 function loadLeaflet() {
-  if (window.L) return Promise.resolve(window.L);
-  return new Promise((resolve, reject) => {
+  return leafletLoad ||= new Promise((resolve, reject) => {
     const css = h("link", { rel: "stylesheet", href: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", crossOrigin: "" });
-    const js = h("script", { src: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js", crossOrigin: "", onload: () => resolve(window.L), onerror: reject });
+    const js = h("script", { src: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js", crossOrigin: "", onload: () => resolve(window.L), onerror: (e) => { leafletLoad = null; reject(e); } });
     document.head.append(css, js);
   });
 }
@@ -628,7 +630,8 @@ async function renderMap() {
     }
   } catch (e) {
     console.error(e);
-    $("map").replaceChildren(h("div.empty", {}, "The map couldn't load. The places below still have Navigate buttons."));
+    // Keep a map that already works; only a failed load gets the message.
+    if (!leaflet) $("map").replaceChildren(h("div.empty", {}, "The map couldn't load. The places below still have Navigate buttons."));
   }
 }
 
