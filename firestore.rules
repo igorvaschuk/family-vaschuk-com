@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Family chat: only Google accounts listed in config/members (field `emails`,
+// lowercase) can read or post. That document is managed outside the app
+// (scripts/add-member.sh or the Firebase console) so the list of family emails
+// never lives in this public repo, and clients can't read or change it.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isMember() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower()
+           in get(/databases/$(database)/documents/config/members).data.emails;
+    }
+
+    match /messages/{id} {
+      allow read: if isMember();
+      allow create: if isMember()
+        && request.resource.data.keys().hasOnly(['text', 'uid', 'name', 'photo', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.photo is string
+        && request.resource.data.photo.size() <= 1000
+        && request.resource.data.createdAt == request.time;
+    }
+  }
+}

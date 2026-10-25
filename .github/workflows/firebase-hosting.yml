@@ -1,4 +1,4 @@
-name: Deploy to Firebase Hosting
+name: Deploy to Firebase
 
 # Keyless auth: GitHub's OIDC token is exchanged for short-lived Google
 # credentials via Workload Identity Federation (pool "github", provider
@@ -39,4 +39,4 @@ jobs:
           node-version: 22
 
       - name: Deploy live site
-        run: npx -y firebase-tools@latest deploy --only hosting --project "$PROJECT_ID" --non-interactive
+        run: npx -y firebase-tools@latest deploy --only hosting,firestore:rules --project "$PROJECT_ID" --non-interactive

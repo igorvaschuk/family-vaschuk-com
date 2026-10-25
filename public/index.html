@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>The Vaschuk Family</title>
-  <meta name="description" content="The Vaschuk family home on the web. Coming soon!">
+  <meta name="description" content="The Vaschuk family home on the web.">
   <meta property="og:title" content="The Vaschuk Family">
-  <meta property="og:description" content="Our family home on the web is being built. Come back soon!">
+  <meta property="og:description" content="Our family home on the web.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏡</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Nunito:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #fbf6ee;
@@ -20,6 +20,7 @@
       --accent: #c8643b;
       --leaf: #5f8a5a;
       --edge: #eadfce;
+      --mine: #f6e3d6;
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -30,17 +31,24 @@
         --accent: #e38a5e;
         --leaf: #8fbf86;
         --edge: #3a342c;
+        --mine: #3d2e24;
       }
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; }
+    html, body { margin: 0; height: 100%; }
     body {
-      min-height: 100vh;
       background: var(--bg);
       color: var(--ink);
       font-family: "Nunito", system-ui, sans-serif;
-      font-size: 18px;
-      line-height: 1.6;
+      font-size: 17px;
+      line-height: 1.5;
+    }
+    [hidden] { display: none !important; }
+    button { font: inherit; cursor: pointer; }
+
+    /* Welcome / not-invited screens */
+    .center {
+      min-height: 100%;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -50,7 +58,7 @@
     }
     .card {
       width: 100%;
-      max-width: 560px;
+      max-width: 520px;
       background: var(--card);
       border: 1px solid var(--edge);
       border-radius: 20px;
@@ -58,57 +66,312 @@
       text-align: center;
       box-shadow: 0 20px 50px rgba(60, 40, 20, .08);
     }
-    .house { width: 120px; height: auto; margin: 0 auto 12px; display: block; }
-    .smoke { animation: drift 4s ease-in-out infinite; transform-origin: center bottom; }
-    .smoke:nth-of-type(2) { animation-delay: 1.3s; }
-    .smoke:nth-of-type(3) { animation-delay: 2.6s; }
-    @keyframes drift {
-      0% { opacity: 0; transform: translateY(6px) scale(.6); }
-      40% { opacity: .7; }
-      100% { opacity: 0; transform: translateY(-14px) scale(1.2); }
-    }
+    .house { width: 110px; height: auto; margin: 0 auto 12px; display: block; }
     h1 {
       font-family: "Fraunces", Georgia, serif;
       font-weight: 700;
-      font-size: clamp(30px, 7vw, 44px);
+      font-size: clamp(30px, 7vw, 42px);
       line-height: 1.15;
       margin: 0 0 12px;
     }
     h1 span { color: var(--accent); }
-    p { margin: 0 auto; color: var(--muted); max-width: 38ch; }
-    .tag {
-      display: inline-block;
-      margin-top: 22px;
-      padding: 6px 14px;
+    .card p { margin: 0 auto 24px; color: var(--muted); max-width: 36ch; }
+    .google {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 22px;
       border-radius: 999px;
-      background: color-mix(in srgb, var(--leaf) 16%, transparent);
-      color: var(--leaf);
-      font-weight: 600;
-      font-size: 15px;
+      border: 1px solid var(--edge);
+      background: var(--card);
+      color: var(--ink);
+      font-weight: 700;
     }
+    .google:hover { border-color: var(--accent); }
+    .google svg { width: 20px; height: 20px; }
+    .link { background: none; border: 0; color: var(--accent); font-weight: 600; padding: 0; }
+    .error { color: var(--accent); font-size: 15px; margin-top: 16px; min-height: 1.5em; }
     footer { font-size: 15px; color: var(--muted); }
-    @media (prefers-reduced-motion: reduce) {
-      .smoke { animation: none; opacity: .5; }
+
+    /* Chat */
+    .chat {
+      height: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
     }
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--edge);
+      background: var(--bg);
+    }
+    .top h2 {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 22px;
+      margin: 0;
+      flex: 1;
+    }
+    .top h2 span { color: var(--accent); }
+    .me { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); }
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      flex: none;
+      object-fit: cover;
+      background: var(--edge);
+      color: var(--ink);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .empty { margin: auto; color: var(--muted); text-align: center; }
+    .msg { display: flex; gap: 10px; align-items: flex-end; max-width: 85%; }
+    .msg.mine { align-self: flex-end; flex-direction: row-reverse; }
+    .bubble {
+      background: var(--card);
+      border: 1px solid var(--edge);
+      border-radius: 16px;
+      padding: 8px 12px;
+      min-width: 0;
+    }
+    .msg.mine .bubble { background: var(--mine); }
+    .meta { font-size: 13px; color: var(--muted); }
+    .meta b { color: var(--ink); font-weight: 700; }
+    .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .compose {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--edge);
+    }
+    .compose textarea {
+      flex: 1;
+      resize: none;
+      font: inherit;
+      color: var(--ink);
+      background: var(--card);
+      border: 1px solid var(--edge);
+      border-radius: 14px;
+      padding: 10px 12px;
+      max-height: 140px;
+    }
+    .compose textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    .send {
+      border: 0;
+      border-radius: 14px;
+      padding: 0 18px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+    .send:disabled { opacity: .5; cursor: default; }
   </style>
 </head>
 <body>
-  <main class="card">
-    <svg class="house" viewBox="0 0 120 110" aria-hidden="true">
-      <circle class="smoke" cx="86" cy="22" r="5" fill="var(--edge)"/>
-      <circle class="smoke" cx="90" cy="14" r="6" fill="var(--edge)"/>
-      <circle class="smoke" cx="84" cy="6" r="4" fill="var(--edge)"/>
-      <rect x="78" y="30" width="12" height="22" fill="var(--muted)"/>
-      <path d="M14 58 L60 20 L106 58 Z" fill="var(--accent)"/>
-      <rect x="24" y="56" width="72" height="46" rx="3" fill="var(--edge)"/>
-      <rect x="52" y="72" width="16" height="30" rx="2" fill="var(--accent)"/>
-      <rect x="32" y="66" width="13" height="13" rx="2" fill="var(--leaf)"/>
-      <rect x="75" y="66" width="13" height="13" rx="2" fill="var(--leaf)"/>
-    </svg>
-    <h1>The <span>Vaschuk</span> Family</h1>
-    <p>Our little corner of the web is being built. Photos, stories and family projects are on their way.</p>
-    <div class="tag">Coming soon</div>
-  </main>
-  <footer>family.vaschuk.com</footer>
+  <!-- Signed out -->
+  <div class="center" id="welcome" hidden>
+    <main class="card">
+      <svg class="house" viewBox="0 0 120 110" aria-hidden="true">
+        <rect x="78" y="30" width="12" height="22" fill="var(--muted)"/>
+        <path d="M14 58 L60 20 L106 58 Z" fill="var(--accent)"/>
+        <rect x="24" y="56" width="72" height="46" rx="3" fill="var(--edge)"/>
+        <rect x="52" y="72" width="16" height="30" rx="2" fill="var(--accent)"/>
+        <rect x="32" y="66" width="13" height="13" rx="2" fill="var(--leaf)"/>
+        <rect x="75" y="66" width="13" height="13" rx="2" fill="var(--leaf)"/>
+      </svg>
+      <h1>The <span>Vaschuk</span> Family</h1>
+      <p>Come on in! Sign in with your Google account to join the family chat.</p>
+      <button class="google" id="signin">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+        Sign in with Google
+      </button>
+      <div class="error" id="signin-error" role="alert"></div>
+    </main>
+    <footer>family.vaschuk.com</footer>
+  </div>
+
+  <!-- Signed in, but not on the family list -->
+  <div class="center" id="uninvited" hidden>
+    <main class="card">
+      <h1>Almost there</h1>
+      <p><b id="uninvited-email"></b> isn't on the family list yet. Ask Igor to add you, then come back.</p>
+      <button class="link" id="switch">Use a different Google account</button>
+    </main>
+  </div>
+
+  <!-- Chat -->
+  <div class="chat" id="chat" hidden>
+    <header class="top">
+      <h2>The <span>Vaschuk</span> Family</h2>
+      <div class="me">
+        <span id="me-name"></span>
+        <span id="me-avatar"></span>
+        <button class="link" id="signout">Sign out</button>
+      </div>
+    </header>
+    <section class="messages" id="messages" aria-live="polite">
+      <div class="empty" id="empty">No messages yet. Say hello! 👋</div>
+    </section>
+    <form class="compose" id="compose">
+      <textarea id="text" rows="1" maxlength="2000" placeholder="Write a message…" aria-label="Message" required></textarea>
+      <button class="send" id="send" type="submit">Send</button>
+    </form>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+    import { getFirestore, collection, query, orderBy, limitToLast, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+    // Public web config (not a secret; access is enforced by firestore.rules).
+    const app = initializeApp({
+      apiKey: "AIzaSyC1XotJSjFhLQQo3i8KNO7xpLHeO8URHOY",
+      authDomain: "vaschuk-com.firebaseapp.com",
+      projectId: "vaschuk-com",
+      appId: "1:1059072294008:web:8272aff3b02d2d7129818d",
+      messagingSenderId: "1059072294008",
+    });
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const messagesRef = collection(db, "messages");
+
+    const $ = (id) => document.getElementById(id);
+    const screens = ["welcome", "uninvited", "chat"];
+    const show = (name) => screens.forEach((s) => ($(s).hidden = s !== name));
+
+    let unsubscribe = null;
+
+    $("signin").onclick = async () => {
+      $("signin-error").textContent = "";
+      try {
+        await signInWithPopup(auth, new GoogleAuthProvider());
+      } catch (e) {
+        if (e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") {
+          $("signin-error").textContent = "Couldn't sign in. Please try again.";
+          console.error(e);
+        }
+      }
+    };
+    $("signout").onclick = $("switch").onclick = () => signOut(auth);
+
+    onAuthStateChanged(auth, (user) => {
+      unsubscribe?.();
+      unsubscribe = null;
+      if (!user) return show("welcome");
+
+      $("me-name").textContent = user.displayName || user.email;
+      $("me-avatar").replaceChildren(avatar(user.photoURL, user.displayName || user.email));
+
+      // The security rules only let family members read, so a permission
+      // error here means this account isn't on the list.
+      const q = query(messagesRef, orderBy("createdAt"), limitToLast(200));
+      unsubscribe = onSnapshot(q, (snap) => {
+        show("chat");
+        render(snap.docs.map((d) => d.data({ serverTimestamps: "estimate" })), user.uid);
+      }, (err) => {
+        if (err.code === "permission-denied") {
+          $("uninvited-email").textContent = user.email;
+          show("uninvited");
+        } else {
+          console.error(err);
+        }
+      });
+    });
+
+    function avatar(url, name) {
+      if (url) {
+        const img = document.createElement("img");
+        img.className = "avatar";
+        img.src = url;
+        img.alt = "";
+        img.referrerPolicy = "no-referrer";
+        return img;
+      }
+      const span = document.createElement("span");
+      span.className = "avatar";
+      span.textContent = (name || "?").trim()[0].toUpperCase();
+      return span;
+    }
+
+    const emptyNote = $("empty");
+    const timeFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+    function render(msgs, myUid) {
+      const box = $("messages");
+      const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      box.replaceChildren();
+      if (!msgs.length) box.append(emptyNote);
+      for (const m of msgs) {
+        const row = document.createElement("div");
+        row.className = "msg" + (m.uid === myUid ? " mine" : "");
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const who = document.createElement("b");
+        who.textContent = m.name;
+        meta.append(who, " · " + (m.createdAt ? timeFmt.format(m.createdAt.toDate()) : ""));
+        const text = document.createElement("div");
+        text.className = "text";
+        text.textContent = m.text;
+        bubble.append(meta, text);
+        row.append(avatar(m.photo, m.name), bubble);
+        box.append(row);
+      }
+      if (nearBottom || msgs.at(-1)?.uid === myUid) box.scrollTop = box.scrollHeight;
+    }
+
+    const input = $("text");
+    input.addEventListener("input", () => {
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        $("compose").requestSubmit();
+      }
+    });
+
+    $("compose").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      const user = auth.currentUser;
+      if (!text || !user) return;
+      $("send").disabled = true;
+      try {
+        await addDoc(messagesRef, {
+          text,
+          uid: user.uid,
+          name: user.displayName || user.email,
+          photo: user.photoURL || "",
+          createdAt: serverTimestamp(),
+        });
+        input.value = "";
+        input.style.height = "auto";
+      } catch (err) {
+        console.error(err);
+        alert("Message didn't send. Please try again.");
+      } finally {
+        $("send").disabled = false;
+        input.focus();
+      }
+    });
+  </script>
 </body>
 </html>

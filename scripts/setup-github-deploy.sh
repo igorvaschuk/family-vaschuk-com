@@ -19,7 +19,7 @@ gcloud iam workload-identity-pools providers create-oidc family-repo \
 gcloud iam service-accounts create family-deployer \
   --project "$PROJECT" --display-name="family.vaschuk.com GitHub deployer"
 
-for ROLE in roles/firebasehosting.admin roles/serviceusage.serviceUsageConsumer; do
+for ROLE in roles/firebasehosting.admin roles/firebaserules.admin roles/serviceusage.serviceUsageConsumer; do
   gcloud projects add-iam-policy-binding "$PROJECT" \
     --member="serviceAccount:${SA}" --role="$ROLE" --condition=None --format=none
 done
