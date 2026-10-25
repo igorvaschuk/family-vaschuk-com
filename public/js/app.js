@@ -10,7 +10,7 @@
 // phones have accounts; the map is built to take another marker layer.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-import { getFirestore, collection, doc, query, orderBy, limit, limitToLast, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, getDocFromServer, disableNetwork, enableNetwork, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore, collection, doc, query, orderBy, limit, limitToLast, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, disableNetwork, enableNetwork, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getMessaging, getToken, deleteToken, isSupported } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging.js";
 import {
   FAMILY_TZ, familyNow, agenda, occurrences, addDays, dateOf, timeOf,
@@ -391,19 +391,25 @@ function statusLine(m) {
   if (m.status === "error") return h("div.status.err", {}, "✨ couldn't finish");
   if (m.status === "done") return null;
   const since = m.createdAt?.toDate ? m.createdAt.toDate().getTime() : Date.now();
-  const el = h("div.status", { "data-since": since, "data-thinking": m.status === "thinking" ? "1" : "" });
+  const el = h("div.status", { "data-id": m.id, "data-since": since, "data-thinking": m.status === "thinking" ? "1" : "" });
   paintStatus(el);
   return el;
 }
 
-/** Text for a pending request's status line; the ticker below keeps it current. */
+/**
+ * Text for a pending request's status line; the ticker below keeps it current.
+ * Time alone never turns it into an error: only the server can say that the
+ * assistant never picked a request up (or failed, which arrives as status).
+ */
 function paintStatus(el) {
   const secs = Math.max(0, Math.round((Date.now() - +el.dataset.since) / 1000));
-  const late = secs > PENDING_GIVE_UP_S;
-  el.classList.toggle("working", !late);
-  el.classList.toggle("err", late);
-  el.textContent = late ? "✨ no answer from the assistant yet"
-    : el.dataset.thinking ? `✨ working on it · ${secs}s`
+  const server = serverStatus.get(el.dataset.id);
+  const unclaimed = secs > UNCLAIMED_AFTER_S && server && !server.status;
+  el.classList.toggle("working", !unclaimed);
+  el.classList.toggle("err", !!unclaimed);
+  el.textContent = unclaimed ? "✨ the assistant didn't pick this up. Please send it again."
+    : el.dataset.thinking || server?.status === "thinking"
+      ? secs > SLOW_AFTER_S ? `✨ still working, taking longer than usual · ${secs}s` : `✨ working on it · ${secs}s`
     : secs < 5 ? "✨ sent to the assistant"
     : `✨ waiting for the assistant · ${secs}s`;
 }
@@ -411,15 +417,22 @@ function paintStatus(el) {
 /* ------------------------------------------------- keeping the chat fresh */
 // Phones (iOS especially) can leave Firestore's live connection silently
 // stalled after the app was in the background: the assistant answers, but the
-// page never hears about it. While a request is pending, compare it with the
-// server every few seconds and restart the connection if the page is behind.
-// Also restart it when the app comes back to the foreground or goes online.
+// page never hears about it. While a request is pending, ask the server for
+// its status every few seconds over a plain HTTPS request (the live connection
+// may be the thing that's stuck), restart the connection if the page is
+// behind, and reload the page if that didn't help. Also restart it when the
+// app comes back to the foreground or goes online.
 
-const PENDING_GIVE_UP_S = 180;
+const UNCLAIMED_AFTER_S = 60; // the function normally marks a request within a second or two
+const SLOW_AFTER_S = 90;
+const WATCH_FOR_S = 600;
 const CHECK_EVERY_MS = 5000;
+const RELOAD_AFTER_MS = 10000; // behind for this long even after reconnecting
+const serverStatus = new Map(); // request id -> { status }
 let lastCheck = 0;
 let resyncing = null;
 let lastResync = 0;
+let behindSince = 0;
 
 function resync() {
   if (resyncing || Date.now() - lastResync < 3000) return resyncing;
@@ -430,14 +443,43 @@ function resync() {
   return resyncing;
 }
 
+/** A request's status read over the Firestore REST API (null if not set yet). */
+async function fetchStatus(id) {
+  const token = await auth.currentUser.getIdToken();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/messages/${id}?mask.fieldPaths=status`;
+    const res = await fetch(url, { headers: { Authorization: "Bearer " + token }, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`status check ${res.status}`);
+    return (await res.json()).fields?.status?.stringValue || null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function reloadOnce() {
+  // Never loop: at most one automatic reload a minute.
+  try {
+    if (Date.now() - +(sessionStorage.getItem("chat-reloaded-at") || 0) < 60000) return;
+    sessionStorage.setItem("chat-reloaded-at", String(Date.now()));
+  } catch {}
+  location.reload();
+}
+
 async function checkPending() {
+  const age = (m) => Date.now() - m.createdAt.toDate().getTime();
   const pending = state.msgs.filter((m) => isRequest(m) && m.status !== "done" && m.status !== "error"
-    && m.createdAt?.toDate && Date.now() - m.createdAt.toDate().getTime() < PENDING_GIVE_UP_S * 1000);
+    && m.createdAt?.toDate && age(m) < WATCH_FOR_S * 1000);
   // Give the live connection a few seconds before second-guessing it.
-  const oldest = pending.find((m) => Date.now() - m.createdAt.toDate().getTime() > 4000);
-  if (!oldest) return;
-  const snap = await getDocFromServer(doc(db, "messages", oldest.id));
-  if ((snap.get("status") || null) !== (oldest.status || null)) await resync();
+  const oldest = pending.find((m) => age(m) > 4000);
+  if (!oldest) return void (behindSince = 0);
+  const status = await fetchStatus(oldest.id);
+  serverStatus.set(oldest.id, { status });
+  if (status === (oldest.status || null)) return void (behindSince = 0);
+  if (!behindSince) behindSince = Date.now();
+  if (Date.now() - behindSince > RELOAD_AFTER_MS) return reloadOnce();
+  await resync();
 }
 
 setInterval(() => {
