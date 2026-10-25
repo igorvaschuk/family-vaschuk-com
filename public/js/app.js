@@ -16,15 +16,10 @@ import {
   FAMILY_TZ, familyNow, agenda, occurrences, addDays, dateOf, timeOf,
   describeRecurrence, directionsUrl,
 } from "./recurrence.js";
+// Production or dev project, picked by where the page is hosted.
+import { firebaseConfig, VAPID_KEY } from "./config.js";
 
-// Public web config (not a secret; access is enforced by firestore.rules).
-const app = initializeApp({
-  apiKey: "AIzaSyC1XotJSjFhLQQo3i8KNO7xpLHeO8URHOY",
-  authDomain: "vaschuk-com.firebaseapp.com",
-  projectId: "vaschuk-com",
-  appId: "1:1059072294008:web:8272aff3b02d2d7129818d",
-  messagingSenderId: "1059072294008",
-});
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const messagesRef = collection(db, "messages");
@@ -103,14 +98,13 @@ $("signout").onclick = $("switch").onclick = async () => {
 /* -------------------------------------------------------------- push (FCM) */
 // Each device that opts in stores its token in tokens/{token}; Cloud Functions
 // push family-chat messages and "time to leave" reminders to them.
-const VAPID_KEY = "BHwxsnOIOUep77eJSg59BF5ZnboXI1tyOlCRwJbxdWj-yD-pluV1ax7kkLex0vAOiDveY2guqsWpPJ4JHKJBTPs";
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 let messaging = null;
 let pushToken = null;
 let pushStarted = false;
 const pushReady = isSupported()
-  .then((ok) => ok && "Notification" in window && (messaging = getMessaging(app), true))
+  .then((ok) => ok && !!VAPID_KEY && "Notification" in window && (messaging = getMessaging(app), true))
   .catch(() => false);
 
 async function setupPush(user, ask) {

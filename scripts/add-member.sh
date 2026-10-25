@@ -2,11 +2,13 @@
 # Adds Google account email(s) to the family chat allowlist (Firestore doc
 # config/members in vaschuk-com). Uses your gcloud login; needs project owner.
 #   bash scripts/add-member.sh someone@gmail.com [another@gmail.com ...]
+# For the dev environment (family-dev.vaschuk.com):
+#   PROJECT=family-dev-vaschuk-com bash scripts/add-member.sh tester@gmail.com
 set -euo pipefail
 
 [ $# -gt 0 ] || { echo "usage: $0 email [email ...]" >&2; exit 1; }
 
-PROJECT=vaschuk-com
+PROJECT=${PROJECT:-vaschuk-com}
 DOC="projects/$PROJECT/databases/(default)/documents/config/members"
 VALUES=$(for e in "$@"; do printf '{"stringValue":"%s"},' "$(echo "$e" | tr '[:upper:]' '[:lower:]')"; done)
 

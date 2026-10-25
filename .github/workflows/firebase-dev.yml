@@ -1,0 +1,61 @@
+name: Deploy branch to family-dev
+
+# Every push to a branch other than main deploys that branch to the dev
+# environment (family-dev.vaschuk.com, Firebase project family-dev-vaschuk-com):
+# site, Firestore rules and Cloud Functions. The last push wins; the DEV badge
+# on the site shows which branch and commit is live. "Run workflow" in the
+# Actions tab deploys any branch on demand.
+#
+# Keyless auth (Workload Identity Federation) into the dev project only; this
+# workflow has no access to production. One-time setup: scripts/setup-dev.sh,
+# which also sets the DEV_WIF_PROVIDER and DEV_SERVICE_ACCOUNT repo variables.
+# Until they exist this workflow does nothing.
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: firebase-dev
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID: family-dev-vaschuk-com
+
+jobs:
+  deploy:
+    if: vars.DEV_WIF_PROVIDER != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: https://family-dev.vaschuk.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.DEV_WIF_PROVIDER }}
+          service_account: ${{ vars.DEV_SERVICE_ACCOUNT }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Stamp version
+        run: |
+          printf '{"branch":"%s","commit":"%s","deployedAt":"%s"}\n' \
+            "$GITHUB_REF_NAME" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > public/version.json
+
+      - name: Install function dependencies
+        run: cd functions && npm install --no-audit --no-fund
+
+      - name: Deploy to dev
+        run: npx -y firebase-tools@latest deploy --only hosting,firestore:rules,functions:family --project "$PROJECT_ID" --non-interactive --force
+
+      - name: Summary
+        run: echo "Deployed **$GITHUB_REF_NAME** ($GITHUB_SHA) to https://family-dev.vaschuk.com" >> "$GITHUB_STEP_SUMMARY"
