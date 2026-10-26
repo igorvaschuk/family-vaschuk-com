@@ -15,6 +15,10 @@ import { FAMILY_TZ, addDays, dateOf, timeOf, isDate } from "./recurrence.js";
 // calendar.app.created: create secondary calendars and manage only the events
 // on them. Nothing else in the member's Google Calendar is visible to the app.
 export const SCOPES = ["openid", "email", "https://www.googleapis.com/auth/calendar.app.created"];
+// Asked for only when a member chooses to bring their own events in
+// (gcal-import.js): read-only access to their calendars.
+export const IMPORT_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+export const canImport = (scope) => String(scope || "").split(" ").includes(IMPORT_SCOPE);
 export const CALENDAR_NAME = "Vaschuk Family";
 
 const OAUTH = "https://oauth2.googleapis.com";
@@ -124,12 +128,12 @@ export function oauthClient({ clientId, clientSecret, fetch = globalThis.fetch }
     return json;
   }
   return {
-    authUrl({ redirectUri, state, loginHint }) {
+    authUrl({ redirectUri, state, loginHint, withImport = false }) {
       const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
       u.searchParams.set("client_id", clientId);
       u.searchParams.set("redirect_uri", redirectUri);
       u.searchParams.set("response_type", "code");
-      u.searchParams.set("scope", SCOPES.join(" "));
+      u.searchParams.set("scope", [...SCOPES, ...(withImport ? [IMPORT_SCOPE] : [])].join(" "));
       // offline + consent: always get a refresh token, so syncing works while the member is away.
       u.searchParams.set("access_type", "offline");
       u.searchParams.set("prompt", "consent");
@@ -205,6 +209,34 @@ export function calendarApi(accessToken, { fetch = globalThis.fetch } = {}) {
         await call("DELETE", `${cal(calendarId)}/events/${gid}`);
       } catch (e) {
         if (e.status !== 404 && e.status !== 410) throw e;
+      }
+    },
+    /** The member's calendars (needs IMPORT_SCOPE): [{ id, name, primary }]. */
+    async listCalendars() {
+      const res = await call("GET", "/users/me/calendarList?" + new URLSearchParams({ maxResults: "250", fields: "items(id,summary,summaryOverride,primary,accessRole)" }));
+      return (res.items || []).map((c) => ({ id: c.id, name: c.summaryOverride || c.summary || c.id, primary: !!c.primary }));
+    },
+    /** Every occurrence starting or running between two instants (recurring events expanded). */
+    async listInstances(calendarId, timeMin, timeMax) {
+      const items = [];
+      let page = "";
+      do {
+        const q = new URLSearchParams({ singleEvents: "true", orderBy: "startTime", maxResults: "2500", timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString() });
+        if (page) q.set("pageToken", page);
+        const res = await call("GET", `${cal(calendarId)}/events?${q}`);
+        items.push(...(res.items || []));
+        page = res.nextPageToken || "";
+      } while (page);
+      return items;
+    },
+    /** One event (a series' master, or a single occurrence), or null if it's gone. */
+    async getEvent(calendarId, id) {
+      try {
+        const ev = await call("GET", `${cal(calendarId)}/events/${encodeURIComponent(id)}`);
+        return ev.status === "cancelled" ? null : ev;
+      } catch (e) {
+        if (e.status === 404 || e.status === 410) return null;
+        throw e;
       }
     },
     /** Ids of every (not deleted) event in the calendar. */

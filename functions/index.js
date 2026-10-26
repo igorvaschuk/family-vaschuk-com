@@ -19,11 +19,13 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { ASSISTANT, requestText, runRequest, nominatimGeocode } from "./assistant.js";
 import { dueReminders, drivingMinutes } from "./reminders.js";
-import { FAMILY_TZ, familyNow } from "./recurrence.js";
+import { FAMILY_TZ } from "./recurrence.js";
 
 initializeApp();
 
-export * from "./gcal-functions.js";
+export { gcal, gcalSync, gcalPushEvent, gcalPushPlace, gcalNightly, gcalImport } from "./gcal-functions.js";
+import { GCAL_SECRETS, importAccess } from "./gcal-functions.js";
+import { firestoreStore } from "./store.js";
 
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 // Override with functions/.env (not committed) if needed.
@@ -113,40 +115,6 @@ export const familyReminders = onSchedule(
   },
 );
 
-/** Firestore adapter used by assistant.js. */
-function firestoreStore(db) {
-  const stamp = () => FieldValue.serverTimestamp();
-  async function recent(coll, n) {
-    const snap = await db.collection(coll).orderBy("createdAt", "desc").limit(n).get();
-    return snap.docs.reverse().map((d) => {
-      const m = d.data();
-      return { id: d.id, ...m, createdAt: m.createdAt ? familyNow(m.createdAt.toDate()) : null };
-    });
-  }
-  return {
-    async list(coll, limit) {
-      const snap = await db.collection(coll).orderBy("createdAt").limit(limit).get();
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    },
-    async add(coll, data) {
-      const ref = await db.collection(coll).add({ ...data, createdAt: stamp(), updatedAt: stamp() });
-      return ref.id;
-    },
-    async update(coll, id, patch) {
-      await db.collection(coll).doc(id).update({ ...patch, updatedAt: stamp() });
-    },
-    async del(coll, id) {
-      await db.collection(coll).doc(id).delete();
-    },
-    async get(path) {
-      const snap = await db.doc(path).get();
-      return snap.exists ? snap.data() : null;
-    },
-    recentMessages: (n) => recent("messages", n),
-    recentThread: (uid, n) => recent(`users/${uid}/thread`, n),
-  };
-}
-
 async function callClaude({ system, messages, tools }) {
   const body = {
     model: MODEL,
@@ -187,7 +155,7 @@ export const familyAssistant = onDocumentCreated(
 );
 
 export const privateAssistant = onDocumentCreated(
-  { document: "users/{uid}/thread/{id}", ...ASSISTANT_OPTS },
+  { document: "users/{uid}/thread/{id}", ...ASSISTANT_OPTS, secrets: [ANTHROPIC_API_KEY, ...GCAL_SECRETS] },
   async (event) => {
     const msg = event.data?.data();
     // The rules only let the owner write here; double-check before acting for them.
@@ -215,6 +183,8 @@ async function answer(event, coll) {
   try {
     const out = await runRequest({
       store: firestoreStore(db),
+      // A member's own Google Calendar, for bringing events in (private thread only).
+      gcal: channel === "private" ? await importAccess(msg.uid) : null,
       callClaude,
       geocode: (q) => nominatimGeocode(q),
       route: (a, b) => drivingMinutes(a, b),

@@ -592,9 +592,13 @@ function emptyPrivate() {
 // /gcal/* on this site) copies every family event into a "Vaschuk Family"
 // calendar there. Tokens never reach the page: it only sees the status doc.
 
-async function gcalCall(action) {
+async function gcalCall(action, body) {
   const token = await auth.currentUser.getIdToken();
-  const res = await fetch("/gcal/" + action, { method: "POST", headers: { Authorization: "Bearer " + token } });
+  const res = await fetch("/gcal/" + action, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
   if (!res.ok) throw new Error(`gcal ${action}: ${res.status}`);
   return res.json();
 }
@@ -603,7 +607,8 @@ async function gcalAction(action, button) {
   if (action === "disconnect" && !confirm("Stop copying family events to your Google Calendar? The “Vaschuk Family” calendar will be removed from your Google account.")) return;
   button.disabled = true;
   try {
-    const out = await gcalCall(action);
+    // "start-import" also asks Google to let the site read their calendars.
+    const out = action === "start-import" ? await gcalCall("start", { import: true }) : await gcalCall(action);
     if (out.url) return void (location.href = out.url);
     toast(action === "resync" ? "Copying family events again…" : "Google Calendar disconnected");
   } catch (e) {
@@ -626,13 +631,19 @@ function renderGcal() {
   } else if (s.state === "error") {
     card.replaceChildren(
       h("span.what", {}, "⚠️ Google Calendar isn't syncing", h("span.sub", {}, s.error || "")),
-      h("div.row", {}, btn("Reconnect", "start", ".primary"), btn("Disconnect", "disconnect")));
+      h("div.row", {}, btn("Reconnect", s.canImport ? "start-import" : "start", ".primary"), btn("Disconnect", "disconnect")));
   } else {
     const when = s.state === "syncing" ? "copying family events…" : s.lastSyncAt ? `synced ${stampText(s.lastSyncAt)}` : "";
     card.replaceChildren(
       h("span.what", {}, "📅 Family events go to “Vaschuk Family” in your Google Calendar",
         h("span.sub", {}, [s.email, when, s.error].filter(Boolean).join(" · "))),
-      h("div.row", {}, btn("Sync now", "resync"), btn("Disconnect", "disconnect")));
+      h("div.row", {}, btn("Sync now", "resync"), btn("Disconnect", "disconnect")),
+      // Bringing their own events into the family calendar (the private assistant asks which).
+      s.canImport
+        ? h("div.import", {}, h("span.sub", {}, "You can also bring events from your own calendars in; the assistant asks you which."),
+          h("button.btn", { type: "button", onclick: () => fill("What's new in my calendar?") }, "🔎 Check my calendar"))
+        : h("div.import", {}, h("span.sub", {}, "Want some of your own events in the family calendar too? Google will ask to let the site read your calendars."),
+          btn("Bring in my events", "start-import")));
   }
 }
 

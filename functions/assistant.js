@@ -15,6 +15,7 @@ import {
   FAMILY_TZ, DAYS, familyNow, agenda, addDays, isDate, isDateTime, dateOf, timeOf,
   describeRecurrence, directionsUrl,
 } from "./recurrence.js";
+import { importer, isImportError, WINDOW_DAYS } from "./gcal-import.js";
 
 export const ASSISTANT = { uid: "assistant", name: "Family Assistant" };
 const MAX_STEPS = 10;
@@ -52,6 +53,7 @@ function eventLine(e, placesById) {
     place ? `at place ${place.id} (${place.name})` : e.location ? `at "${e.location}" (not on map)` : "",
     e.notes ? `notes: ${clip(e.notes, 200)}` : "",
     e.remind === false ? "reminders off" : "",
+    e.source?.type === "gcal" ? `from ${e.source.by}'s Google Calendar` : "",
   ].filter(Boolean).join(" | ");
 }
 
@@ -73,7 +75,27 @@ function gcalLine(requester, gcal) {
   return `${requester} hasn't connected Google Calendar. If they ask about it, tell them to tap "Connect Google Calendar" at the top of this conversation; then every family event appears in a "Vaschuk Family" calendar in their Google Calendar.`;
 }
 
-export function buildSystemPrompt({ now, memory, places, events, chat, requester, channel, privateMemory = [], thread = [], gcal = null }) {
+/** The private-thread section about bringing the requester's own Google events in. */
+function importSection(requester, gcal, imp) {
+  if (!gcal || gcal.state === "off") return "";
+  if (!gcal.canImport) {
+    return `\n\nBRINGING ${requester.toUpperCase()}'S OWN EVENTS IN: not allowed yet. If they want events from their own Google Calendar in the family calendar, tell them to tap "Bring in my events" on the Google Calendar card at the top of this conversation (Google will ask to let the site read their calendars; it shows an "unverified app" screen once: Advanced → continue).`;
+  }
+  return `\n\nBRINGING ${requester.toUpperCase()}'S OWN EVENTS IN (from their Google Calendar; private until added):
+Looking at: ${imp.calendars.map((c) => c.name).join(", ") || "their main calendar (nothing else chosen yet)"}
+Rules: ${imp.rules.map((r) => `${r.id}: always ${r.decision}${r.calendarName ? ` events from ${r.calendarName}` : ""}${r.titleContains ? ` with "${r.titleContains}" in the title` : ""} ("${r.note}")`).join("; ") || "none"}
+Waiting for an answer (number. title — when [calendar]):
+${imp.waiting.slice(0, 40).map((o) => `${o.n}. ${o.title} — ${o.when} [${o.calendar}]${o.repeats ? " (repeats)" : ""}`).join("\n") || "(none)"}
+How to work:
+- When they ask what's new or want events brought in, call check_my_google_calendar right away (next ${WINDOW_DAYS} days by default; it starts with their main calendar when nothing else is chosen) and give a short summary first, e.g. "23 events in the next 4 weeks, 6 of them repeating. Add all, some, or none?" Don't ask which calendars before checking. Say where you looked; the first time, mention you can also look at their other calendars (my_google_calendars, choose_import_calendars), leaving out work ones unless they want them.
+- If "some", list them numbered exactly as the tool returned them ("n. title — when"), grouped by day when the list is long, and let them answer with numbers or descriptions ("the kids' stuff, not work"). "All" means every waiting number; "none" means skip_from_my_calendar for all of them.
+- Work out who each event is for from the title and memory; ask when unclear, and pass it as who.
+- Never add their events without a yes or a rule. When answers show a clear pattern, offer to make it a rule (add_import_rule), e.g. "always add events from Kids".
+- Once a day you ask about new events here by yourself; a reply like "1 and 3" refers to the numbers above.
+- Added events stay linked: when ${requester} moves or cancels one in Google, the family copy follows. Changes to their time or title made here would be overwritten by the next change in Google, so suggest changing them in Google. Deleting one here only stops it showing in the family calendar.`;
+}
+
+export function buildSystemPrompt({ now, memory, places, events, chat, requester, channel, privateMemory = [], thread = [], gcal = null, imp = null }) {
   const placesById = new Map(places.map((p) => [p.id, p]));
   const home = places.find((p) => p.isHome);
   const upcoming = agenda(events, now.date, addDays(now.date, 13)).map((o) => {
@@ -100,7 +122,7 @@ How to work:
 - Calling: saved places with a phone number get a Call button in the app; when asked to call a place, make sure its phone is saved and tell them to tap Call.
 - Directions: when someone wants to go somewhere or asks for navigation, call get_directions; the app shows an "Open in Google Maps" button, so don't paste URLs.
 ${channel === "private" ? `- Private thread: what ${requester} says here stays between you and them. Never copy private details into family memory, event notes or the family chat unless they ask. Calendar and place changes are shared by nature: the family sees them and a short notice goes to the family chat, so say so if they seem to expect otherwise.
-- Google Calendar: ${gcalLine(requester, gcal)} Bringing their own Google events into the family calendar is coming soon.
+- Google Calendar: ${gcalLine(requester, gcal)} They can also bring events from their own Google calendars into the family calendar (see below).
 - Private memory: remember things only ${requester} needs (their preferences, their own schedule, how they want things done) with remember and private: true. Facts the whole family should know (about the kids, shared plans) go to family memory with private: false; if unsure which, ask.
 ` : ""}- Memory: when someone states a durable fact (children's names, which child does which activity, coaches and teachers, carpools, preferences, standing arrangements), call remember. Record only what people actually said, attributed to them; never record guesses. If a new fact replaces an old one, use update_memory; if asked to forget, use forget. Family memory is visible to the whole family and is auditable.
 ${channel === "private" ? "" : `- Google Calendar: each member can copy the family calendar into their own Google Calendar from the Assistant tab → Just me → Connect Google Calendar.
@@ -126,7 +148,7 @@ RECENT CHAT (oldest first, for context; "/" lines and "assistant" lines were req
 ${chat.join("\n") || "(empty)"}${channel === "private" ? `
 
 PRIVATE THREAD WITH ${requester.toUpperCase()} (oldest first):
-${thread.join("\n") || "(empty)"}` : ""}`;
+${thread.join("\n") || "(empty)"}${importSection(requester, gcal, imp)}` : ""}`;
 }
 
 /* ------------------------------------------------------------------- tools */
@@ -242,10 +264,62 @@ export const TOOLS = [
   },
 ];
 
-/** TOOLS, plus the private-memory switch in a member's private thread. */
-export function toolsFor(channel) {
+/** Bringing a member's own Google Calendar events in (private thread, once their calendar is linked). */
+export const IMPORT_TOOLS = [
+  {
+    name: "my_google_calendars",
+    description: "List the requester's own Google calendars, marking the ones already chosen for bringing events in.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "choose_import_calendars",
+    description: "Set which of the requester's Google calendars to look at for events to bring into the family calendar (replaces the previous choice).",
+    input_schema: { type: "object", properties: { calendars: { type: "array", items: { type: "string" }, description: "Calendar ids or names from my_google_calendars." } }, required: ["calendars"] },
+  },
+  {
+    name: "check_my_google_calendar",
+    description: "Look through the requester's calendars (their main one unless others were chosen) for upcoming events that haven't been added or skipped yet. Returns numbered offers (a repeating series is one offer). Rules are applied first.",
+    input_schema: { type: "object", properties: { days: { type: "integer", minimum: 7, maximum: 90, description: `How many days ahead (default ${WINDOW_DAYS}).` } } },
+  },
+  {
+    name: "add_from_my_calendar",
+    description: "Add offered events to the family calendar by number. They stay linked to the requester's Google Calendar.",
+    input_schema: {
+      type: "object",
+      properties: { items: { type: "array", items: { type: "object", properties: { n: { type: "integer" }, who: { type: "array", items: { type: "string" }, description: "Which children or family members it's for." } }, required: ["n"] } } },
+      required: ["items"],
+    },
+  },
+  {
+    name: "skip_from_my_calendar",
+    description: "Mark offered events as not for the family calendar, so they aren't offered again.",
+    input_schema: { type: "object", properties: { numbers: { type: "array", items: { type: "integer" } } }, required: ["numbers"] },
+  },
+  {
+    name: "add_import_rule",
+    description: "Decide future events automatically: always add, or always skip, events from one of the chosen calendars and/or with certain words in the title.",
+    input_schema: {
+      type: "object",
+      properties: {
+        decision: { type: "string", enum: ["add", "skip"] },
+        calendar: { type: ["string", "null"], description: "A chosen calendar's name or id." },
+        title_contains: { type: ["string", "null"] },
+        note: { type: "string", description: "The rule in their words." },
+      },
+      required: ["decision", "note"],
+    },
+  },
+  {
+    name: "remove_import_rule",
+    description: "Forget an import rule.",
+    input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
+];
+
+/** TOOLS, plus the private-memory switch and (when their calendar is linked) importing in a member's private thread. */
+export function toolsFor(channel, { gcal = null } = {}) {
   if (channel !== "private") return TOOLS;
-  return TOOLS.map((t) => t.name !== "remember" ? t : {
+  const tools = TOOLS.map((t) => t.name !== "remember" ? t : {
     ...t,
     input_schema: {
       ...t.input_schema,
@@ -255,6 +329,7 @@ export function toolsFor(channel) {
       },
     },
   });
+  return gcal?.canImport ? [...tools, ...IMPORT_TOOLS] : tools;
 }
 
 /* --------------------------------------------------------- tool execution */
@@ -310,7 +385,7 @@ export function matchPlace(places, text) {
  * Executes one request end to end. Returns the reply to post:
  * { text, refs: { events, places }, links, changes, familyNotice }.
  */
-export async function runRequest({ store, callClaude, geocode, route = async () => null, request, msgId, msg, now = familyNow(), log = () => {} }) {
+export async function runRequest({ store, callClaude, geocode, route = async () => null, gcal: google = null, request, msgId, msg, now = familyNow(), log = () => {} }) {
   const channel = ["assistant", "private"].includes(msg.channel) ? msg.channel : "family";
   const isPrivate = channel === "private";
   const mine = (c) => `users/${msg.uid}/${c}`;
@@ -695,8 +770,33 @@ export async function runRequest({ store, callClaude, geocode, route = async () 
     }
   }
 
-  const system = buildSystemPrompt({ now, memory, places, events, chat, requester: by, channel, privateMemory, thread, gcal });
-  const toolList = toolsFor(channel);
+  // The requester's own Google Calendar (private thread): bringing events in.
+  const imp = isPrivate && google?.canImport
+    ? importer({ store, api: google.api, uid: msg.uid, by, now, audit, log })
+    : null;
+  const importOps = {
+    my_google_calendars: () => imp.calendars(),
+    choose_import_calendars: ({ calendars }) => imp.chooseCalendars(calendars || []).then((names) => ({ ok: true, looking_at: names })),
+    check_my_google_calendar: ({ days }) => imp.check(days ? Math.max(7, Math.min(90, Math.floor(days))) : undefined)
+      .then(({ waiting, lookingAt }) => ({ looked_at: lookingAt, waiting, count: waiting.length, repeating: waiting.filter((o) => o.repeats).length })),
+    add_from_my_calendar: ({ items }) => imp.add((items || []).map((i) => ({ n: i.n, who: (i.who || []).map((w) => str(w, 60, "who")).filter(Boolean).slice(0, 10) }))),
+    skip_from_my_calendar: ({ numbers }) => imp.skip(numbers || []),
+    add_import_rule: ({ decision, calendar, title_contains, note }) => imp.addRule({ decision, calendar, titleContains: str(title_contains, 80, "title_contains"), note }),
+    remove_import_rule: ({ id }) => imp.removeRule(id),
+  };
+  for (const [name, op] of Object.entries(importOps)) {
+    tools[name] = async (input) => {
+      if (!imp) fail("their Google Calendar can't be read yet: ask them to tap \"Bring in my events\" on the Google Calendar card");
+      try {
+        return await op(input);
+      } catch (e) {
+        if (isImportError(e)) fail(e.message);
+        throw e;
+      }
+    };
+  }
+  const system = buildSystemPrompt({ now, memory, places, events, chat, requester: by, channel, privateMemory, thread, gcal, imp: imp ? await imp.state() : null });
+  const toolList = toolsFor(channel, { gcal: google });
   const messages = [{ role: "user", content: `${by}: ${request || "(empty request — briefly say what you can help with)"}` }];
   let text = "";
   for (let step = 0; step < MAX_STEPS; step++) {
@@ -719,12 +819,17 @@ export async function runRequest({ store, callClaude, geocode, route = async () 
     text = res.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
     break;
   }
+  if (imp) {
+    changes.push(...imp.changes);
+    for (const c of imp.changes) refs.events.add(c.id);
+  }
   if (!text) text = changes.length ? "Done: " + changes.map((c) => c.summary).join("; ") + "." : "Sorry, I got stuck on that one. Could you rephrase it?";
 
   const calendarChanges = changes.filter((c) => c.kind === "event");
+  const imported = new Set(imp ? imp.changes.filter((c) => !/^removed/.test(c.summary)).map((c) => c.id) : []);
   return {
     text,
-    refs: { events: [...refs.events].filter((id) => events.some((e) => e.id === id)), places: [...refs.places].filter((id) => places.some((p) => p.id === id)) },
+    refs: { events: [...refs.events].filter((id) => imported.has(id) || events.some((e) => e.id === id)), places: [...refs.places].filter((id) => places.some((p) => p.id === id)) },
     links,
     changes: changes.map((c) => c.summary),
     // Calendar changes made outside the family chat (assistant tab or a

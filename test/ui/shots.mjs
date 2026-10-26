@@ -31,6 +31,17 @@ console.log("private send:", await page.evaluate(() => JSON.stringify({
 await page.screenshot({ path: `${out}/assistant-me-sent.png` });
 // Google Calendar card: connected, then not connected (Connect opens the consent URL).
 console.log("gcal card:", JSON.stringify(await page.textContent("#gcal-card")));
+await page.click("#gcal-card button:has-text('Bring in my events')");
+await page.waitForTimeout(300);
+console.log("bring in went to:", await page.evaluate(() => location.hash), "| calls:", JSON.stringify(await page.evaluate(() => window.__gcal)));
+await page.addInitScript(() => { window.__SEED["users/u-igor/settings"][0].canImport = true; });
+await page.goto("http://localhost:8123/#assistant/me");
+await page.reload(); // same page, new hash: reload so the change above applies
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${out}/gcal-import.png` });
+await page.click("#gcal-card button:has-text('Check my calendar')");
+console.log("check my calendar draft:", JSON.stringify(await page.inputValue("#text")));
+await page.fill("#text", "");
 await page.click("#gcal-card button:has-text('Sync now')");
 await page.waitForTimeout(200);
 await page.addInitScript(() => { window.__SEED["users/u-igor/settings"] = []; }); // not connected from here on
