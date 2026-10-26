@@ -159,6 +159,15 @@ test("choose calendars, check, add with who, skip, rules, and following Google c
   imp = make();
   await imp.follow();
   assert.deepEqual(imp.changes, []);
+
+  // Disconnect forgets offers and settings, not imported events: reconnecting doesn't re-offer them.
+  delete store.data["users/u1/gcalOffers"];
+  delete store.data["users/u1/settings"];
+  imp = make();
+  await imp.chooseCalendars(["Kids", "primary@x"]);
+  const again = (await imp.check()).waiting.map((o) => o.title);
+  assert.ok(!again.includes("Piano") && !again.includes("Swim meet"), again.join(", "));
+  assert.ok(again.includes("Lunch with Sam"));
 });
 
 test("the private assistant brings events in: check, then add by number with who", async () => {
