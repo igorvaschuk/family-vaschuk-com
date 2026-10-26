@@ -53,7 +53,7 @@ window.fetch = async (url, opts) => {
   // The gcal function: window.__gcal records calls; "start" returns a consent URL.
   const g = String(url).match(/^\/gcal\/(\w+)/);
   if (g) {
-    (window.__gcal ||= []).push(g[1]);
+    (window.__gcal ||= []).push(g[1] + (opts?.body ? " " + opts.body : ""));
     return new Response(JSON.stringify(g[1] === "start" ? { url: "#gcal-consent" } : { ok: true }));
   }
   const m = String(url).match(/firestore\.googleapis\.com\/.*\/documents\/(.+)\/([^/?]+)\?/);

@@ -10,6 +10,10 @@
 //    renamed/moved place) to every linked Google calendar.
 //  - gcalSync: full sync of one account when gcalAccounts/{uid}.resyncRequestedAt
 //    changes (after connecting, on request, and nightly from gcalNightly).
+//  - gcalImport: every 30 minutes, for members who let the site read their
+//    calendars: imported events follow their Google Calendar, rules handle new
+//    events, and once a day the private assistant asks about the rest
+//    (gcal-import.js).
 //
 // Firestore:
 //   gcalAccounts/{uid}       refresh token, Google email, calendar id: no client access
@@ -23,13 +27,17 @@ import { logger } from "firebase-functions";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { randomBytes } from "node:crypto";
-import { CALENDAR_NAME, oauthClient, calendarApi, syncAll, pushOne, isRevoked } from "./gcal.js";
-import { FAMILY_TZ } from "./recurrence.js";
+import { getMessaging } from "firebase-admin/messaging";
+import { CALENDAR_NAME, oauthClient, calendarApi, syncAll, pushOne, isRevoked, canImport } from "./gcal.js";
+import { importer, digestText } from "./gcal-import.js";
+import { firestoreStore } from "./store.js";
+import { FAMILY_TZ, familyNow } from "./recurrence.js";
 
 // OAuth client (Web application) from Google Cloud console → Google Auth Platform → Clients.
 const GCAL_CLIENT_ID = defineSecret("GCAL_CLIENT_ID");
 const GCAL_CLIENT_SECRET = defineSecret("GCAL_CLIENT_SECRET");
 const SECRETS = [GCAL_CLIENT_ID, GCAL_CLIENT_SECRET];
+export const GCAL_SECRETS = SECRETS;
 
 const PROJECT = process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || "{}").projectId;
 const APP_URLS = { "vaschuk-com": "https://family.vaschuk.com", "family-dev-vaschuk-com": "https://family-dev.vaschuk.com" };
@@ -94,7 +102,8 @@ export const gcal = onRequest({ region: "us-central1", secrets: SECRETS, timeout
     if (action === "start") {
       const nonce = randomBytes(18).toString("hex");
       await getFirestore().collection("gcalStates").doc(nonce).set({ uid: member.uid, expiresAt: Date.now() + STATE_TTL_MS });
-      return void res.json({ url: oauth().authUrl({ redirectUri: REDIRECT_URI, state: nonce, loginHint: member.email }) });
+      // { import: true }: also ask to read their calendars, to bring events in.
+      return void res.json({ url: oauth().authUrl({ redirectUri: REDIRECT_URI, state: nonce, loginHint: member.email, withImport: !!req.body?.import }) });
     }
     if (action === "resync") {
       const snap = await accountRef(member.uid).get();
@@ -160,7 +169,7 @@ async function callback(req, res) {
     connectedAt: FieldValue.serverTimestamp(),
     resyncRequestedAt: FieldValue.serverTimestamp(),
   });
-  await setStatus(uid, { state: "syncing", email: t.email, calendarName: CALENDAR_NAME, error: null, connectedAt: FieldValue.serverTimestamp() });
+  await setStatus(uid, { state: "syncing", email: t.email, calendarName: CALENDAR_NAME, canImport: canImport(t.scope), error: null, connectedAt: FieldValue.serverTimestamp() });
   logger.info(`gcal ${uid}: connected ${t.email}`);
   back(res, "connected");
 }
@@ -185,7 +194,8 @@ export const gcalSync = onDocumentWritten(
       }
       const [events, places] = await Promise.all(["events", "places"].map(async (c) =>
         (await db.collection(c).get()).docs.map((d) => ({ id: d.id, ...d.data() }))));
-      const out = await syncAll({ api, calendarId: account.calendarId, events, places, appUrl: APP_URL });
+      // Events imported from this member's own calendar are already there.
+      const out = await syncAll({ api, calendarId: account.calendarId, events: events.filter((e) => e.source?.uid !== uid), places, appUrl: APP_URL });
       logger.info(`gcal ${uid}: synced ${out.pushed}, removed ${out.removed}, failed ${out.failed.length}`, out.failed);
       await setStatus(uid, {
         state: "connected",
@@ -218,7 +228,9 @@ async function pushToAll(ids) {
     try {
       const api = await apiFor(account.uid, account);
       for (const { id, ev } of events) {
-        await pushOne({ api, calendarId: account.calendarId, id, ev, place: ev?.placeId && places.get(ev.placeId), appUrl: APP_URL });
+        // Not back into the calendar it was imported from.
+        const own = ev?.source?.uid === account.uid;
+        await pushOne({ api, calendarId: account.calendarId, id, ev: own ? null : ev, place: ev?.placeId && places.get(ev.placeId), appUrl: APP_URL });
       }
       await setStatus(account.uid, { lastSyncAt: FieldValue.serverTimestamp() });
     } catch (e) {
@@ -255,5 +267,74 @@ export const gcalNightly = onSchedule(
     // Drop consent screens that were never finished.
     const stale = await db.collection("gcalStates").where("expiresAt", "<", Date.now()).get();
     await Promise.all(stale.docs.map((d) => d.ref.delete()));
+  },
+);
+
+/* ------------------------------------------------------------ importing */
+
+/** Access to a member's Google Calendar for the private assistant, or null if not linked. */
+export async function importAccess(uid) {
+  const account = (await accountRef(uid).get()).data();
+  if (!account?.refreshToken || account.revoked) return null;
+  return { canImport: canImport(account.scope), api: () => apiFor(uid, account) };
+}
+
+const ASK_EVERY_MS = 20 * 60 * 60 * 1000;
+
+/** Pushes to one member's devices (data-only; the service worker shows it). */
+async function pushTo(uid, data) {
+  const snap = await getFirestore().collection("tokens").where("uid", "==", uid).get();
+  if (snap.empty) return;
+  const res = await getMessaging().sendEachForMulticast({
+    tokens: snap.docs.map((d) => d.id),
+    webpush: { data, headers: { Urgency: "normal", TTL: "43200" } },
+  });
+  logger.info(`gcal ${uid}: asked on ${res.successCount} device(s)`);
+}
+
+export const gcalImport = onSchedule(
+  { schedule: "every 30 minutes", region: "us-central1", timeZone: FAMILY_TZ, secrets: SECRETS, timeoutSeconds: 540 },
+  async () => {
+    const db = getFirestore();
+    const store = firestoreStore(db);
+    const now = familyNow();
+    for (const account of await linkedAccounts()) {
+      if (!canImport(account.scope)) continue;
+      const { uid } = account;
+      const settings = await store.get(`users/${uid}/settings/gcalImport`);
+      if (!settings?.calendars?.length) continue;
+      const by = (await getAuth().getUser(uid).catch(() => null))?.displayName?.split(" ")[0] || account.email;
+      const audit = (action, targetId, before, after) => store.add("auditLog", {
+        action, targetId, before: before ?? null, after: after ?? null, by, byUid: uid, request: null, via: "gcal",
+      });
+      const imp = importer({ store, api: () => apiFor(uid, account), uid, by, now, audit, log: (...a) => logger.warn(...a) });
+      try {
+        await imp.follow();
+        const waiting = await imp.refreshOffers();
+        const fresh = waiting.filter((o) => o.status === "new");
+        const hour = +now.time.slice(0, 2);
+        if (fresh.length && hour >= 8 && hour < 20 && Date.now() - (settings.lastAskedAt || 0) > ASK_EVERY_MS) {
+          const text = digestText(fresh.map((o) => ({ n: o.n, title: o.title, when: o.when, calendar: o.calendarName })));
+          await db.collection(`users/${uid}/thread`).add({
+            uid: "assistant", name: "Family Assistant", photo: "", channel: "private", kind: "reply",
+            text, refs: { events: [], places: [] }, links: [], createdAt: FieldValue.serverTimestamp(),
+          });
+          for (const o of fresh) await store.update(`users/${uid}/gcalOffers`, o.id, { status: "asked" });
+          await imp.saveSettings({ lastAskedAt: Date.now() });
+          await pushTo(uid, { title: "✨ Family Assistant", body: `${fresh.length === 1 ? "A new event" : `${fresh.length} new events`} in your calendar: add to the family calendar?`, id: "gcal-ask-" + uid, url: "/#assistant/me" });
+        }
+      } catch (e) {
+        if (isRevoked(e)) continue;
+        logger.error(`gcal ${uid}: import run failed`, e);
+      }
+      const calendarChanges = imp.changes.filter((c) => c.kind === "event");
+      if (calendarChanges.length) {
+        await db.collection("messages").add({
+          uid: "assistant", name: "Family Assistant", photo: "", channel: "family", kind: "notice",
+          text: `From ${by}'s calendar: ${calendarChanges.map((c) => c.summary.replace(` from ${by}'s calendar`, "")).join("; ")}.`.slice(0, 1000),
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+    }
   },
 );
