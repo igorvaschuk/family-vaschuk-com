@@ -221,8 +221,13 @@
     }
     .text { white-space: pre-wrap; overflow-wrap: anywhere; }
     .slash { color: var(--leaf); font-weight: 700; }
-    .status { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .status { font-size: 13px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
     .status.err { color: var(--accent); }
+    .refresh {
+      font: inherit; font-weight: 700; color: var(--accent); background: none;
+      border: 1px solid currentColor; border-radius: 999px; padding: 3px 10px; min-height: 28px;
+    }
+    .refresh[hidden] { display: none; }
     .working { display: flex; align-items: center; gap: 6px; }
     .working::after {
       content: ""; width: 26px; height: 6px; flex: none;
