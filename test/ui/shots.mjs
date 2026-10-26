@@ -13,6 +13,17 @@ page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 await page.route(/gstatic\.com\/firebasejs\//, (r) => r.fulfill({ contentType: "application/javascript", body: fake }));
 await page.addInitScript(seed);
 await page.clock.setFixedTime(new Date("2026-10-25T20:15:00Z"));
+// Signed out: the public home page (Google's app review reads it).
+{
+  const out2 = await ctx.newPage();
+  await out2.route(/gstatic\.com\/firebasejs\//, (r) => r.fulfill({ contentType: "application/javascript", body: fake }));
+  await out2.addInitScript(() => { window.__signedOut = true; });
+  await out2.goto("http://localhost:8123/");
+  await out2.waitForTimeout(500);
+  await out2.screenshot({ path: `${out}/welcome.png`, fullPage: true });
+  console.log("privacy link:", await out2.getAttribute("footer a", "href"));
+  await out2.close();
+}
 for (const tab of ["family", "assistant", "assistant/me", "calendar", "map", "memory"]) {
   await page.goto("http://localhost:8123/#" + tab);
   await page.waitForTimeout(tab === "map" ? 2500 : 500);

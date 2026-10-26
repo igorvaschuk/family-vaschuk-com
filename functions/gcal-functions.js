@@ -124,6 +124,11 @@ export const gcal = onRequest({ region: "us-central1", secrets: SECRETS, timeout
         await oauth().revoke(account.refreshToken);
       }
       await snap.ref.delete();
+      // Forget what was read from their calendars, too (the privacy policy promises it).
+      const db = getFirestore();
+      const offers = await db.collection(`users/${member.uid}/gcalOffers`).get();
+      await Promise.all(offers.docs.map((d) => d.ref.delete()));
+      await db.doc(`users/${member.uid}/settings/gcalImport`).delete();
       await statusRef(member.uid).set({ state: "off", updatedAt: FieldValue.serverTimestamp() });
       return void res.json({ ok: true });
     }

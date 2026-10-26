@@ -96,6 +96,13 @@
     .link { background: none; border: 0; color: var(--accent); font-weight: 600; padding: 0; }
     .error { color: var(--accent); font-size: 15px; margin-top: 16px; min-height: 1.5em; }
     footer { font-size: 15px; color: var(--muted); }
+    footer a { color: inherit; }
+    .about { max-width: 520px; width: 100%; color: var(--muted); font-size: 15px; line-height: 1.5; }
+    .about h2 { font-family: "Fraunces", Georgia, serif; font-size: 18px; color: var(--ink); margin: 0 0 6px; }
+    .about p { margin: 0 0 6px; }
+    .about ul { margin: 0; padding-left: 20px; }
+    .about li { margin: 4px 0; }
+    .about b { color: var(--ink); }
 
     /* App shell */
     .app {
@@ -479,7 +486,18 @@
       </button>
       <div class="error" id="signin-error" role="alert"></div>
     </main>
-    <footer>family.vaschuk.com</footer>
+    <!-- What the site is, for visitors and for Google's app review (it has to be public). -->
+    <section class="about" aria-label="About this site">
+      <h2>About this site</h2>
+      <p>A private website for the Vaschuk family. Only family members we've invited can sign in. Inside:</p>
+      <ul>
+        <li><b>Family chat</b>, with push notifications.</li>
+        <li><b>A shared calendar</b> for the kids' activities, a <b>map</b> of where they happen, and "time to leave" reminders.</li>
+        <li><b>A family assistant</b> (powered by Claude) that keeps the calendar, finds places and gives directions, with a private conversation for each member.</li>
+        <li><b>Google Calendar</b>, if a member chooses: the family calendar is copied into a "Vaschuk Family" calendar in their Google account, and they can pick events from their own calendars to add to the family calendar. The site only reads their calendars when they allow it, and never changes them.</li>
+      </ul>
+    </section>
+    <footer>family.vaschuk.com · <a href="/privacy.html">Privacy policy</a></footer>
   </div>
 
   <!-- Signed in, but not on the family list -->
