@@ -35,7 +35,12 @@ function rows(q) {
   return { docs: list.map(({ id, ...d }) => ({ id, data: () => d })) };
 }
 export function onSnapshot(q, cb) {
-  const l = { name: q.name, emit: () => cb(rows(q)) };
+  // A doc ref (it has an id) gets a document snapshot.
+  const snapOf = () => {
+    const d = (store[q.name] || []).find((x) => x.id === q.id);
+    return { exists: () => !!d, data: () => d };
+  };
+  const l = { name: q.name, emit: () => cb(q.id ? snapOf() : rows(q)) };
   listeners.push(l);
   setTimeout(l.emit, 20);
   return () => listeners.splice(listeners.indexOf(l), 1);
@@ -44,6 +49,12 @@ export const getDocs = async (q) => rows(q.c ? q : { name: q.name });
 // The page checks pending requests over the REST API; answer from the store.
 const realFetch = window.fetch.bind(window);
 window.fetch = async (url, opts) => {
+  // The gcal function: window.__gcal records calls; "start" returns a consent URL.
+  const g = String(url).match(/^\/gcal\/(\w+)/);
+  if (g) {
+    (window.__gcal ||= []).push(g[1]);
+    return new Response(JSON.stringify(g[1] === "start" ? { url: "#gcal-consent" } : { ok: true }));
+  }
   const m = String(url).match(/firestore\.googleapis\.com\/.*\/documents\/(.+)\/([^/?]+)\?/);
   if (!m) return realFetch(url, opts);
   if (window.__restDown) throw new DOMException("aborted", "AbortError");

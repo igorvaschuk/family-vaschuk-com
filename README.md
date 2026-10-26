@@ -12,6 +12,7 @@ Tabs: **Family** (chat), **Assistant**, **Calendar**, **Map**, **Memory**.
 - The assistant keeps the calendar (one event per activity, with weekly/daily/monthly repeats and skipped dates), looks up new places on the web (name, address, phone), puts them on the map, gives Google Maps directions, and remembers facts people tell it.
 - **Time to leave**: for each timed event at a mapped place, every device with notifications on gets a push at *driving time from home + 10 min* before it starts; tapping it opens Google Maps directions. Tell the assistant the home address once ("our home is 12 Elm St, Princeton") so drive times can be computed; until then 20 minutes is assumed.
 - Places and events have **Navigate**, **Call** (when a phone is saved) and **Share** buttons. Share uses the phone's share sheet (or copies the details) with a Google Maps link anyone can open.
+- **Google Calendar**: in *Just me*, **Connect Google Calendar** adds a "Vaschuk Family" calendar to your Google account and keeps every family event in it (repeats, skipped dates and places included). Change events here, not in Google: Google-side edits are overwritten. **Disconnect** removes that calendar again.
 - **Memory** lists every remembered fact (who said it, when) and the log of every change the assistant made. **Download JSON** exports memory, places, calendar and the full change log; asking the assistant for "a JSON of what you remember" gives the same button.
 
 How it works:
@@ -21,6 +22,25 @@ How it works:
 - `familyReminders` runs every 5 minutes ([functions/reminders.js](functions/reminders.js)) and records each sent reminder in `reminders/{event}_{date}` so it goes out once.
 - Firestore: `events`, `places`, `memory`, `auditLog` are readable by family members and written only by the functions; `users/{uid}/thread`, `/memory` and `/auditLog` are readable only by that member (see [firestore.rules](firestore.rules)). Times are stored as family wall-clock strings in America/New_York; [public/js/recurrence.js](public/js/recurrence.js) expands repeats on both sides (`functions/recurrence.js` must stay an identical copy — a test checks).
 - Later: kids' live locations can go in a separate collection with their own accounts and show as another layer on the map.
+
+### Google Calendar sync
+
+[functions/gcal.js](functions/gcal.js) maps family events to Google events (one per family event, with an id derived from the family id, so pushes are idempotent) and talks to Google's OAuth and Calendar APIs; [functions/gcal-functions.js](functions/gcal-functions.js) wires it up:
+
+- `gcal` serves `/gcal/start|callback|disconnect|resync` on the site (rewrite in [firebase.json](firebase.json)). Connecting uses Google's OAuth code flow with offline access and the `calendar.app.created` scope: the app can create its own calendar and manage the events on it, and sees nothing else in the member's Google Calendar.
+- `gcalPushEvent` / `gcalPushPlace` copy every family calendar change to each linked calendar; `gcalSync` does a full sync after connecting, on **Sync now**, and nightly (`gcalNightly`), and repairs anything a push missed.
+- Firestore: `gcalAccounts/{uid}` (refresh token, Google email, calendar id) and `gcalStates` are function-only; members read their own status in `users/{uid}/settings/gcal`.
+
+One-time setup, per Firebase project (`family-dev-vaschuk-com` first, then `vaschuk-com`), in the Google Cloud console:
+
+1. Enable the **Google Calendar API**: `gcloud services enable calendar-json.googleapis.com --project PROJECT`.
+2. **Google Auth Platform → Data access**: add the scope `.../auth/calendar.app.created`. **Audience**: External, *In production* (not *Testing*: test-mode refresh tokens expire after 7 days). Without Google's verification, members see an "unverified app" warning once when they connect; the limit is 100 users.
+3. **Clients → Create client → Web application** ("Family calendar sync"), authorized redirect URI `https://family-dev.vaschuk.com/gcal/callback` (prod: `https://family.vaschuk.com/gcal/callback`).
+4. Store the client's id and secret, then deploy the functions:
+   ```sh
+   firebase functions:secrets:set GCAL_CLIENT_ID --project PROJECT
+   firebase functions:secrets:set GCAL_CLIENT_SECRET --project PROJECT
+   ```
 
 ### One-time setup
 

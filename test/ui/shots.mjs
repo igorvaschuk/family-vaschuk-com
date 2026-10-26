@@ -29,6 +29,18 @@ console.log("private send:", await page.evaluate(() => JSON.stringify({
   family: window.__store.messages.some((m) => m.text === "Sync my dentist appointments"),
 })));
 await page.screenshot({ path: `${out}/assistant-me-sent.png` });
+// Google Calendar card: connected, then not connected (Connect opens the consent URL).
+console.log("gcal card:", JSON.stringify(await page.textContent("#gcal-card")));
+await page.click("#gcal-card button:has-text('Sync now')");
+await page.waitForTimeout(200);
+await page.addInitScript(() => { window.__SEED["users/u-igor/settings"] = []; }); // not connected from here on
+await page.goto("http://localhost:8123/?gcal=connected#assistant/me");
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/gcal-connect.png` });
+console.log("after consent return:", await page.evaluate(() => location.search || "(no query)"), "| toast:", JSON.stringify(await page.textContent(".toast").catch(() => null)));
+await page.click("#gcal-card button:has-text('Connect Google Calendar')");
+await page.waitForTimeout(300);
+console.log("connect went to:", await page.evaluate(() => location.hash));
 // The Assistant tab reopens on the conversation used last.
 await page.goto("http://localhost:8123/#family");
 await page.waitForTimeout(300);

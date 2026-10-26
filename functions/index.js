@@ -8,6 +8,8 @@
 //    (users/{uid}/thread), with that member's private memory.
 //  - familyReminders: every 5 minutes, pushes "time to leave" reminders to
 //    every device at driving time + 10 min before activities (reminders.js).
+//  - gcal*: copies the family calendar into each member's Google Calendar
+//    once they connect it (gcal-functions.js).
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
@@ -20,6 +22,8 @@ import { dueReminders, drivingMinutes } from "./reminders.js";
 import { FAMILY_TZ, familyNow } from "./recurrence.js";
 
 initializeApp();
+
+export * from "./gcal-functions.js";
 
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 // Override with functions/.env (not committed) if needed.
@@ -133,6 +137,10 @@ function firestoreStore(db) {
     },
     async del(coll, id) {
       await db.collection(coll).doc(id).delete();
+    },
+    async get(path) {
+      const snap = await db.doc(path).get();
+      return snap.exists ? snap.data() : null;
     },
     recentMessages: (n) => recent("messages", n),
     recentThread: (uid, n) => recent(`users/${uid}/thread`, n),

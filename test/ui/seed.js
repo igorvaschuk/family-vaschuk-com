@@ -22,6 +22,9 @@ window.__SEED = {
   "users/u-igor/memory": [
     { id: "pk1", fact: "Igor works late on Wednesdays.", subject: "Igor", createdAt: at("2026-10-25T19:40:00Z") },
   ],
+  "users/u-igor/settings": [
+    { id: "gcal", state: "connected", email: "igor@example.com", calendarName: "Vaschuk Family", lastSyncAt: at("2026-10-25T20:05:00Z") },
+  ],
   "users/u-igor/thread": [
     { id: "t1", text: "Remember that I work late on Wednesdays", uid: "u-igor", name: "Igor Vaschuk", photo: "", channel: "private", status: "done", createdAt: at("2026-10-25T19:40:00Z") },
     { id: "t2", uid: "assistant", name: "Family Assistant", photo: "", channel: "private", kind: "reply", replyTo: "t1", text: "Got it, I'll keep that just for you. Olga is down for Wednesday swim pickup, so nothing to change there.", refs: { events: [], places: [] }, links: [], createdAt: at("2026-10-25T19:40:06Z") },
