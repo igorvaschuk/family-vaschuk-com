@@ -388,13 +388,19 @@ function renderList(box, msgs, where) {
 }
 
 function statusLine(m) {
-  if (m.status === "error") return h("div.status.err", {}, "✨ couldn't finish");
+  if (m.status === "error") return h("div.status.err", {}, h("span.label", {}, "✨ couldn't finish"), refreshButton());
   if (m.status === "done") return null;
   const since = m.createdAt?.toDate ? m.createdAt.toDate().getTime() : Date.now();
-  const el = h("div.status", { "data-id": m.id, "data-since": since, "data-thinking": m.status === "thinking" ? "1" : "" });
+  const el = h("div.status", { "data-id": m.id, "data-since": since, "data-thinking": m.status === "thinking" ? "1" : "" },
+    h("span.label"), refreshButton());
   paintStatus(el);
   return el;
 }
+
+// Reloading also picks up a newer version of the page, so it fixes a stale
+// connection and stale code alike, without scrolling up to the browser's own.
+const refreshButton = () => h("button.refresh", { type: "button", onclick: () => location.reload() }, "↻ Refresh");
+const SHOW_REFRESH_AFTER_S = 10;
 
 /**
  * Text for a pending request's status line; the ticker below keeps it current.
@@ -405,9 +411,10 @@ function paintStatus(el) {
   const secs = Math.max(0, Math.round((Date.now() - +el.dataset.since) / 1000));
   const server = serverStatus.get(el.dataset.id);
   const unclaimed = secs > UNCLAIMED_AFTER_S && server && !server.status;
-  el.classList.toggle("working", !unclaimed);
   el.classList.toggle("err", !!unclaimed);
-  el.textContent = unclaimed ? "✨ the assistant didn't pick this up. Please send it again."
+  el.querySelector(".label").classList.toggle("working", !unclaimed);
+  el.querySelector(".refresh").hidden = !unclaimed && secs < SHOW_REFRESH_AFTER_S;
+  el.querySelector(".label").textContent = unclaimed ? "✨ the assistant didn't pick this up. Please send it again."
     : el.dataset.thinking || server?.status === "thinking"
       ? secs > SLOW_AFTER_S ? `✨ still working, taking longer than usual · ${secs}s` : `✨ working on it · ${secs}s`
     : secs < 5 ? "✨ sent to the assistant"
