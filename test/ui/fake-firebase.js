@@ -18,8 +18,8 @@ export const signInWithPopup = async () => {};
 export const signOut = async () => {};
 // firestore
 export const getFirestore = () => ({});
-export const collection = (_db, name) => ({ name });
-export const doc = (_db, name, id) => ({ name, id });
+export const collection = (_db, ...path) => ({ name: path.join("/") });
+export const doc = (_db, ...path) => ({ name: path.slice(0, -1).join("/"), id: path.at(-1) });
 export const orderBy = (field, dir = "asc") => ({ t: "orderBy", field, dir });
 export const limit = (n) => ({ t: "limit", n });
 export const limitToLast = (n) => ({ t: "limitToLast", n });
@@ -44,10 +44,10 @@ export const getDocs = async (q) => rows(q.c ? q : { name: q.name });
 // The page checks pending requests over the REST API; answer from the store.
 const realFetch = window.fetch.bind(window);
 window.fetch = async (url, opts) => {
-  const m = String(url).match(/firestore\.googleapis\.com\/.*\/documents\/messages\/([^?]+)/);
+  const m = String(url).match(/firestore\.googleapis\.com\/.*\/documents\/(.+)\/([^/?]+)\?/);
   if (!m) return realFetch(url, opts);
   if (window.__restDown) throw new DOMException("aborted", "AbortError");
-  const d = store.messages?.find((x) => x.id === m[1]);
+  const d = store[m[1]]?.find((x) => x.id === m[2]);
   return new Response(JSON.stringify({ fields: d?.status ? { status: { stringValue: d.status } } : {} }));
 };
 // Counts reconnects so tests can see the stalled-connection recovery.
