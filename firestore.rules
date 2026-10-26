@@ -34,6 +34,35 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
     }
 
+    // Each member's private thread with the assistant, their private memory
+    // and its change log: only that member can see them. They post requests
+    // (channel "private"); replies, status, memory and log come from the
+    // Cloud Function.
+    function isOwner(uid) {
+      return isMember() && request.auth.uid == uid;
+    }
+    match /users/{uid}/thread/{id} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['text', 'uid', 'name', 'photo', 'createdAt', 'channel'])
+        && request.resource.data.channel == 'private'
+        && request.resource.data.uid == uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.photo is string
+        && request.resource.data.photo.size() <= 1000
+        && request.resource.data.createdAt == request.time;
+    }
+    match /users/{uid}/memory/{id} {
+      allow read: if isOwner(uid);
+    }
+    match /users/{uid}/auditLog/{id} {
+      allow read: if isOwner(uid);
+    }
+
     // Push tokens, one doc per device (doc id = FCM token). Only the Cloud
     // Function reads them. A member can claim a token (devices can switch
     // accounts) and delete their own.

@@ -4,6 +4,8 @@
 //  - familyAssistant: answers requests to the assistant ("/..." in the family
 //    chat, or anything in the assistant tab) using Claude with tools for the
 //    family calendar, places and memory (see assistant.js).
+//  - privateAssistant: the same assistant in each member's private thread
+//    (users/{uid}/thread), with that member's private memory.
 //  - familyReminders: every 5 minutes, pushes "time to leave" reminders to
 //    every device at driving time + 10 min before activities (reminders.js).
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
@@ -110,6 +112,13 @@ export const familyReminders = onSchedule(
 /** Firestore adapter used by assistant.js. */
 function firestoreStore(db) {
   const stamp = () => FieldValue.serverTimestamp();
+  async function recent(coll, n) {
+    const snap = await db.collection(coll).orderBy("createdAt", "desc").limit(n).get();
+    return snap.docs.reverse().map((d) => {
+      const m = d.data();
+      return { id: d.id, ...m, createdAt: m.createdAt ? familyNow(m.createdAt.toDate()) : null };
+    });
+  }
   return {
     async list(coll, limit) {
       const snap = await db.collection(coll).orderBy("createdAt").limit(limit).get();
@@ -125,13 +134,8 @@ function firestoreStore(db) {
     async del(coll, id) {
       await db.collection(coll).doc(id).delete();
     },
-    async recentMessages(n) {
-      const snap = await db.collection("messages").orderBy("createdAt", "desc").limit(n).get();
-      return snap.docs.reverse().map((d) => {
-        const m = d.data();
-        return { id: d.id, ...m, createdAt: m.createdAt ? familyNow(m.createdAt.toDate()) : null };
-      });
-    },
+    recentMessages: (n) => recent("messages", n),
+    recentThread: (uid, n) => recent(`users/${uid}/thread`, n),
   };
 }
 
@@ -167,48 +171,63 @@ async function callClaude({ system, messages, tools }) {
   return res.json();
 }
 
+const ASSISTANT_OPTS = { region: "us-central1", secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 180, memory: "512MiB" };
+
 export const familyAssistant = onDocumentCreated(
-  { document: "messages/{id}", region: "us-central1", secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 180, memory: "512MiB" },
+  { document: "messages/{id}", ...ASSISTANT_OPTS },
+  (event) => answer(event, "messages"),
+);
+
+export const privateAssistant = onDocumentCreated(
+  { document: "users/{uid}/thread/{id}", ...ASSISTANT_OPTS },
   async (event) => {
     const msg = event.data?.data();
-    const request = requestText(msg);
-    if (request == null) return;
-
-    const db = getFirestore();
-    const reqRef = event.data.ref;
-    const channel = msg.channel === "assistant" ? "assistant" : "family";
-    const post = (data) => db.collection("messages").add({
-      uid: ASSISTANT.uid, name: ASSISTANT.name, photo: "", channel,
-      replyTo: event.params.id, requester: { uid: msg.uid, name: msg.name },
-      createdAt: FieldValue.serverTimestamp(), ...data,
-    });
-
-    await reqRef.update({ status: "thinking" });
-    try {
-      const out = await runRequest({
-        store: firestoreStore(db),
-        callClaude,
-        geocode: (q) => nominatimGeocode(q),
-        route: (a, b) => drivingMinutes(a, b),
-        request,
-        msgId: event.params.id,
-        msg,
-        log: (...a) => logger.warn(...a),
-      });
-      const reply = await post({
-        kind: "reply",
-        text: out.text.slice(0, 4000),
-        refs: out.refs,
-        links: out.links,
-        changes: out.changes,
-      });
-      if (out.familyNotice) await post({ kind: "notice", channel: "family", text: out.familyNotice.slice(0, 1000) });
-      await reqRef.update({ status: "done", replyId: reply.id });
-      logger.info(`request ${event.params.id} by ${msg.name}: ${out.changes.length} change(s)`);
-    } catch (e) {
-      logger.error(`request ${event.params.id} failed`, e);
-      await post({ kind: "error", text: "Sorry, something went wrong on my side. Please check the calendar and try again in a minute." });
-      await reqRef.update({ status: "error" });
-    }
+    // The rules only let the owner write here; double-check before acting for them.
+    if (!msg || msg.uid !== event.params.uid || msg.channel !== "private") return;
+    await answer(event, `users/${event.params.uid}/thread`);
   },
 );
+
+/** Answers a request posted in `coll` with a reply in the same collection. */
+async function answer(event, coll) {
+  const msg = event.data?.data();
+  const request = requestText(msg);
+  if (request == null) return;
+
+  const db = getFirestore();
+  const reqRef = event.data.ref;
+  const channel = ["assistant", "private"].includes(msg.channel) ? msg.channel : "family";
+  const post = (data, to = coll) => db.collection(to).add({
+    uid: ASSISTANT.uid, name: ASSISTANT.name, photo: "", channel,
+    replyTo: event.params.id, requester: { uid: msg.uid, name: msg.name },
+    createdAt: FieldValue.serverTimestamp(), ...data,
+  });
+
+  await reqRef.update({ status: "thinking" });
+  try {
+    const out = await runRequest({
+      store: firestoreStore(db),
+      callClaude,
+      geocode: (q) => nominatimGeocode(q),
+      route: (a, b) => drivingMinutes(a, b),
+      request,
+      msgId: event.params.id,
+      msg,
+      log: (...a) => logger.warn(...a),
+    });
+    const reply = await post({
+      kind: "reply",
+      text: out.text.slice(0, 4000),
+      refs: out.refs,
+      links: out.links,
+      changes: out.changes,
+    });
+    if (out.familyNotice) await post({ kind: "notice", channel: "family", text: out.familyNotice.slice(0, 1000) }, "messages");
+    await reqRef.update({ status: "done", replyId: reply.id });
+    logger.info(`request ${event.params.id} by ${msg.name}: ${out.changes.length} change(s)`);
+  } catch (e) {
+    logger.error(`request ${event.params.id} failed`, e);
+    await post({ kind: "error", text: "Sorry, something went wrong on my side. Please check the calendar and try again in a minute." });
+    await reqRef.update({ status: "error" });
+  }
+}

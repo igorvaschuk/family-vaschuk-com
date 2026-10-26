@@ -8,6 +8,7 @@ Tabs: **Family** (chat), **Assistant**, **Calendar**, **Map**, **Memory**.
 
 - In the Family chat, a message starting with `/` goes to the assistant (`/what's on tomorrow?`); everything else is just chat. The ✨ button next to the message box switches to the Assistant tab (and 💬 back), carrying the draft along.
 - In the Assistant tab no slash is needed. Every request and reply, from either place, is listed there. Calendar changes made from the Assistant tab are announced in the family chat.
+- The Assistant tab has two conversations: **Family** (shared, as above) and **Just me**, a private thread only you can see (`#assistant/me`). There the assistant also keeps a private memory for you, listed under "Only you can see" on the Memory tab. Calendar and place changes made privately are still shared: they land in the family change log (marked "asked privately", without your words) and are announced in the family chat.
 - The assistant keeps the calendar (one event per activity, with weekly/daily/monthly repeats and skipped dates), looks up new places on the web (name, address, phone), puts them on the map, gives Google Maps directions, and remembers facts people tell it.
 - **Time to leave**: for each timed event at a mapped place, every device with notifications on gets a push at *driving time from home + 10 min* before it starts; tapping it opens Google Maps directions. Tell the assistant the home address once ("our home is 12 Elm St, Princeton") so drive times can be computed; until then 20 minutes is assumed.
 - Places and events have **Navigate**, **Call** (when a phone is saved) and **Share** buttons. Share uses the phone's share sheet (or copies the details) with a Google Maps link anyone can open.
@@ -15,10 +16,10 @@ Tabs: **Family** (chat), **Assistant**, **Calendar**, **Map**, **Memory**.
 
 How it works:
 
-- [functions/index.js](functions/index.js) `familyAssistant` fires on new `messages` that are requests, calls Claude (`claude-sonnet-5-5`, override with `ASSISTANT_MODEL` in `functions/.env`) with tools from [functions/assistant.js](functions/assistant.js), and posts the reply. Claude's web search is used to look up places when the API organization allows it (set `ASSISTANT_WEB_SEARCH=off` to disable).
+- [functions/index.js](functions/index.js) `familyAssistant` fires on new `messages` that are requests (`privateAssistant` on `users/{uid}/thread`), calls Claude (`claude-sonnet-5-5`, override with `ASSISTANT_MODEL` in `functions/.env`) with tools from [functions/assistant.js](functions/assistant.js), and posts the reply. Claude's web search is used to look up places when the API organization allows it (set `ASSISTANT_WEB_SEARCH=off` to disable).
 - Geocoding uses OpenStreetMap Nominatim and drive times use the public OSRM router (no keys; no live traffic, so times are padded 15%). The map is Leaflet with OpenStreetMap tiles.
 - `familyReminders` runs every 5 minutes ([functions/reminders.js](functions/reminders.js)) and records each sent reminder in `reminders/{event}_{date}` so it goes out once.
-- Firestore: `events`, `places`, `memory`, `auditLog` are readable by family members and written only by the functions (see [firestore.rules](firestore.rules)). Times are stored as family wall-clock strings in America/New_York; [public/js/recurrence.js](public/js/recurrence.js) expands repeats on both sides (`functions/recurrence.js` must stay an identical copy — a test checks).
+- Firestore: `events`, `places`, `memory`, `auditLog` are readable by family members and written only by the functions; `users/{uid}/thread`, `/memory` and `/auditLog` are readable only by that member (see [firestore.rules](firestore.rules)). Times are stored as family wall-clock strings in America/New_York; [public/js/recurrence.js](public/js/recurrence.js) expands repeats on both sides (`functions/recurrence.js` must stay an identical copy — a test checks).
 - Later: kids' live locations can go in a separate collection with their own accounts and show as another layer on the map.
 
 ### One-time setup

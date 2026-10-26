@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { requestText, runRequest, matchPlace, buildSystemPrompt, TOOLS } from "../functions/assistant.js";
+import { requestText, runRequest, matchPlace, buildSystemPrompt, TOOLS, toolsFor } from "../functions/assistant.js";
 
 function fakeStore(seed = {}) {
   const data = { memory: [], places: [], events: [], auditLog: [], ...structuredClone(seed) };
@@ -12,6 +12,7 @@ function fakeStore(seed = {}) {
     async update(c, id, p) { Object.assign(data[c].find((x) => x.id === id), structuredClone(p)); },
     async del(c, id) { data[c] = data[c].filter((x) => x.id !== id); },
     async recentMessages() { return [{ id: "m0", name: "Olga", text: "Masha has soccer now", createdAt: { date: "2026-10-25", time: "15:00" } }]; },
+    async recentThread(uid) { return structuredClone(data[`users/${uid}/thread`] || []); },
   };
 }
 
@@ -39,6 +40,7 @@ test("requestText: slash in family chat, anything in assistant tab", () => {
   assert.equal(requestText({ text: "hi all", uid: "u" }), null);
   assert.equal(requestText({ text: "add soccer", uid: "u", channel: "assistant" }), "add soccer");
   assert.equal(requestText({ text: "/add soccer", uid: "u", channel: "assistant" }), "add soccer");
+  assert.equal(requestText({ text: "sync my calendar", uid: "u", channel: "private" }), "sync my calendar");
   assert.equal(requestText({ text: "/loop", uid: "assistant" }), null);
   assert.equal(requestText({ text: "/x", uid: "u", kind: "notice" }), null);
 });
@@ -130,4 +132,43 @@ test("matchPlace", () => {
   assert.equal(matchPlace(places, "The Lake")?.id, "a");
   assert.equal(matchPlace(places, "Lakeside Park, 1 Lake Rd")?.id, "a");
   assert.equal(matchPlace(places, "Lakewood"), null);
+});
+
+test("private thread: private memory stays private, calendar changes are shared without the words", async () => {
+  const store = fakeStore({
+    memory: [{ id: "k1", fact: "Kids are Masha and Dima." }],
+    "users/u1/memory": [{ id: "pk1", fact: "Igor works late on Wednesdays.", createdDate: "2026-10-20" }],
+    "users/u1/thread": [{ id: "t0", uid: "u1", name: "Igor", text: "hi", createdAt: { date: "2026-10-25", time: "15:50" } }],
+  });
+  const claude = scripted([
+    [["remember", { fact: "Igor prefers morning reminders." }],
+     ["remember", { fact: "Masha's dentist is Dr. Park.", subject: "Masha", private: false }],
+     ["update_memory", { id: "pk1", fact: "Igor works late on Wednesdays and Fridays." }],
+     ["create_event", { title: "Dentist", who: ["Masha"], start: "2026-10-28T15:00" }]],
+  ], "Done.");
+  const out = await runRequest({ store, callClaude: claude, geocode, request: "my secret plans: dentist for Masha wed 3pm", msgId: "t1", msg: { uid: "u1", name: "Igor", channel: "private" }, now });
+
+  assert.deepEqual(store.data["users/u1/memory"].map((m) => m.fact), ["Igor works late on Wednesdays and Fridays.", "Igor prefers morning reminders."]);
+  assert.deepEqual(store.data.memory.map((m) => m.fact), ["Kids are Masha and Dima.", "Masha's dentist is Dr. Park."]);
+  // Private memory changes are logged privately; family changes in the family log, without the request text.
+  assert.deepEqual(store.data["users/u1/auditLog"].map((a) => a.action), ["memory.add", "memory.update"]);
+  assert.deepEqual(store.data.auditLog.map((a) => [a.action, a.request, a.via]), [["memory.add", null, "private"], ["event.create", null, "private"]]);
+  assert.match(out.familyNotice, /^Igor updated the calendar: added “Dentist” for Masha/);
+
+  const sys = claude.seen[0].system;
+  assert.match(sys, /in their private thread with you/);
+  assert.match(sys, /PRIVATE MEMORY[^\n]*\npk1: Igor works late on Wednesdays\./);
+  assert.match(sys, /PRIVATE THREAD WITH IGOR[^\n]*\n\[2026-10-25 15:50\] Igor: hi/);
+  assert.ok(toolsFor("private").find((t) => t.name === "remember").input_schema.properties.private);
+  assert.ok(!TOOLS.find((t) => t.name === "remember").input_schema.properties.private);
+});
+
+test("outside a private thread nothing private is read or written", async () => {
+  const store = fakeStore({ "users/u1/memory": [{ id: "pk1", fact: "Igor works late on Wednesdays." }] });
+  const claude = scripted([[["remember", { fact: "Dima swims Mondays.", private: true }], ["forget", { id: "pk1" }]]], "Ok.");
+  await runRequest({ store, callClaude: claude, geocode, request: "x", msgId: "m9", msg: { uid: "u1", name: "Igor", channel: "assistant" }, now });
+  assert.equal(store.data.memory[0].fact, "Dima swims Mondays.");
+  assert.equal(store.data["users/u1/memory"].length, 1);
+  assert.match(claude.seen[1].messages.at(-1).content[1].content, /no memory with id pk1/);
+  assert.doesNotMatch(claude.seen[0].system, /PRIVATE|works late/);
 });

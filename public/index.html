@@ -247,6 +247,12 @@
       max-width: 92%;
       text-align: center;
     }
+    .scope {
+      position: sticky; top: 0; z-index: 1;
+      display: flex; gap: 6px; justify-content: center;
+      padding: 8px 12px; background: var(--bg); border-bottom: 1px solid var(--edge);
+    }
+    .scope .btn { flex: 1; max-width: 180px; justify-content: center; }
     .attach { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
     .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
 
@@ -497,7 +503,12 @@
       <div class="messages" id="family-list" aria-live="polite"></div>
     </section>
     <section class="view" id="view-assistant" role="tabpanel" aria-label="Assistant" hidden>
+      <div class="scope" role="group" aria-label="Who sees this conversation">
+        <a class="btn" id="scope-family" href="#assistant">👨‍👩‍👧 Family</a>
+        <a class="btn" id="scope-me" href="#assistant/me">🔒 Just me</a>
+      </div>
       <div class="messages" id="assistant-list" aria-live="polite"></div>
+      <div class="messages" id="private-list" aria-live="polite" hidden></div>
     </section>
     <section class="view" id="view-calendar" role="tabpanel" aria-label="Calendar" hidden></section>
     <section class="view" id="view-map" role="tabpanel" aria-label="Map" hidden>

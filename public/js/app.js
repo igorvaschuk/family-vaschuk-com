@@ -6,6 +6,9 @@
 //   places     saved places + home    │ written only by the assistant
 //   memory     remembered facts       │ (functions/), readable by the family
 //   auditLog   every assistant change ┘
+//   users/{uid}/thread, /memory, /auditLog
+//              each member's private assistant thread, private memory and
+//              its log: only that member can read them
 // Future: kids' live locations will go in a separate collection once their
 // phones have accounts; the map is built to take another marker layer.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
@@ -57,7 +60,10 @@ const state = {
   places: [],
   memory: [],
   audit: [],
+  mine: [], // my private thread
+  myMemory: [],
   tab: "family",
+  scope: "family", // assistant tab: "family" or "me" (private thread)
   week: sundayOf(familyNow().date),
   who: null, // calendar filter
   focusPlace: null,
@@ -66,6 +72,7 @@ function sundayOf(ymd) { return addDays(ymd, -new Date(ymd + "T12:00:00Z").getUT
 const placeById = (id) => state.places.find((p) => p.id === id);
 const eventById = (id) => state.events.find((e) => e.id === id);
 const home = () => state.places.find((p) => p.isHome);
+const myThread = () => collection(db, "users", state.user.uid, "thread");
 let unsubs = [];
 
 /* ------------------------------------------------------------------- auth */
@@ -204,11 +211,13 @@ onAuthStateChanged(auth, (user) => {
   watch("places", collection(db, "places"), "places", all);
   watch("memory", query(collection(db, "memory"), orderBy("createdAt")), "memory", renderMemory);
   watch("auditLog", query(collection(db, "auditLog"), orderBy("createdAt", "desc"), limit(60)), "audit", renderMemory);
+  watch("thread", query(myThread(), orderBy("createdAt"), limitToLast(300)), "mine", renderMessages);
+  watch("myMemory", query(collection(db, "users", user.uid, "memory"), orderBy("createdAt")), "myMemory", renderMemory);
   route();
 });
 
 /* ---------------------------------------------------------------- routing */
-// #family #assistant #calendar #map #map/<placeId> #memory #export
+// #family #assistant #assistant/me #calendar #map #map/<placeId> #memory #export
 
 const TABS = ["family", "assistant", "calendar", "map", "memory"];
 function route() {
@@ -220,6 +229,14 @@ function route() {
   }
   state.tab = TABS.includes(tab) ? tab : "family";
   state.focusPlace = state.tab === "map" ? arg || null : null;
+  if (state.tab === "assistant") {
+    state.scope = arg === "me" ? "me" : "family";
+    try { localStorage.setItem("assistant-scope", state.scope); } catch {}
+    $("assistant-list").hidden = state.scope === "me";
+    $("private-list").hidden = state.scope !== "me";
+    $("scope-family").setAttribute("aria-pressed", String(state.scope === "family"));
+    $("scope-me").setAttribute("aria-pressed", String(state.scope === "me"));
+  }
   for (const t of TABS) $("view-" + t).hidden = t !== state.tab;
   document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
   $("compose").hidden = state.tab !== "family" && state.tab !== "assistant";
@@ -234,7 +251,12 @@ function route() {
   if (state.tab === "memory") renderMemory();
 }
 addEventListener("hashchange", route);
-document.querySelectorAll(".tab").forEach((b) => (b.onclick = () => go(b.dataset.tab)));
+document.querySelectorAll(".tab").forEach((b) => (b.onclick = () => go(b.dataset.tab === "assistant" ? assistantHash() : b.dataset.tab)));
+/** The assistant tab opens on whichever conversation (family or private) was used last. */
+function assistantHash() {
+  try { if (localStorage.getItem("assistant-scope") === "me") return "assistant/me"; } catch {}
+  return "assistant";
+}
 const go = (hash) => {
   if (location.hash === "#" + hash) route();
   else location.hash = hash;
@@ -348,13 +370,14 @@ function eventCard(ev, occ) {
 
 /* --------------------------------------------------------------- messages */
 
-const isRequest = (m) => m.uid !== ASSISTANT_UID && !m.kind && (m.channel === "assistant" || String(m.text || "").trimStart().startsWith("/"));
+const isRequest = (m) => m.uid !== ASSISTANT_UID && !m.kind && (m.channel === "assistant" || m.channel === "private" || String(m.text || "").trimStart().startsWith("/"));
 const inFamily = (m) => (m.channel || "family") === "family";
 const inAssistant = (m) => (m.channel === "assistant" || isRequest(m) || (m.uid === ASSISTANT_UID && m.kind !== "notice"));
 
 function renderMessages() {
   renderList($("family-list"), state.msgs.filter(inFamily), "family");
   renderList($("assistant-list"), state.msgs.filter(inAssistant), "assistant");
+  renderList($("private-list"), state.mine, "private");
 }
 
 function renderList(box, msgs, where) {
@@ -362,7 +385,7 @@ function renderList(box, msgs, where) {
   const nearBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 80;
   const myUid = state.user?.uid;
   box.replaceChildren();
-  if (!msgs.length) box.append(where === "family" ? emptyFamily() : emptyAssistant());
+  if (!msgs.length) box.append(where === "family" ? emptyFamily() : where === "private" ? emptyPrivate() : emptyAssistant());
   for (const m of msgs) {
     if (m.kind === "notice") {
       box.append(h("div.notice", {}, "📅 " + m.text));
@@ -451,12 +474,13 @@ function resync() {
 }
 
 /** A request's status read over the Firestore REST API (null if not set yet). */
-async function fetchStatus(id) {
+async function fetchStatus(m) {
   const token = await auth.currentUser.getIdToken();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 5000);
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/messages/${id}?mask.fieldPaths=status`;
+    const path = m.channel === "private" ? `users/${m.uid}/thread/${m.id}` : `messages/${m.id}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/${path}?mask.fieldPaths=status`;
     const res = await fetch(url, { headers: { Authorization: "Bearer " + token }, signal: ctrl.signal });
     if (!res.ok) throw new Error(`status check ${res.status}`);
     return (await res.json()).fields?.status?.stringValue || null;
@@ -476,12 +500,12 @@ function reloadOnce() {
 
 async function checkPending() {
   const age = (m) => Date.now() - m.createdAt.toDate().getTime();
-  const pending = state.msgs.filter((m) => isRequest(m) && m.status !== "done" && m.status !== "error"
+  const pending = [...state.msgs, ...state.mine].filter((m) => isRequest(m) && m.status !== "done" && m.status !== "error"
     && m.createdAt?.toDate && age(m) < WATCH_FOR_S * 1000);
   // Give the live connection a few seconds before second-guessing it.
   const oldest = pending.find((m) => age(m) > 4000);
   if (!oldest) return void (behindSince = 0);
-  const status = await fetchStatus(oldest.id);
+  const status = await fetchStatus(oldest);
   serverStatus.set(oldest.id, { status });
   if (status === (oldest.status || null)) return void (behindSince = 0);
   if (!behindSince) behindSince = Date.now();
@@ -546,11 +570,22 @@ function emptyAssistant() {
     h("div.suggest", {}, ...ideas.map((t) => h("button.btn", { type: "button", onclick: () => fill(t.endsWith("…") ? t.slice(0, -1) : t) }, t))));
 }
 
+function emptyPrivate() {
+  const ideas = [
+    "What's on my plate this week?",
+    "Remember that I work late on Wednesdays",
+    "What do you remember about me?",
+  ];
+  return h("div.empty", {},
+    h("div", {}, "🔒 Just you and the assistant. The family doesn't see this conversation or what it remembers for you here. Calendar changes are still shared: the family sees them, with a short note in the family chat."),
+    h("div.suggest", {}, ...ideas.map((t) => h("button.btn", { type: "button", onclick: () => fill(t) }, t))));
+}
+
 /* --------------------------------------------------------------- composer */
 
 const input = $("text");
 function fill(text, tab = "assistant") {
-  if (state.tab !== tab) go(tab);
+  if (state.tab !== tab) go(tab === "assistant" ? assistantHash() : tab);
   input.value = text;
   updateComposer();
   input.focus();
@@ -559,13 +594,16 @@ function fill(text, tab = "assistant") {
 
 function updateComposer() {
   const toAssistant = state.tab === "assistant";
+  const priv = toAssistant && state.scope === "me";
   const ask = toAssistant || input.value.trimStart().startsWith("/");
   $("compose").classList.toggle("ask", ask);
-  $("to").hidden = !ask || toAssistant;
+  $("to").hidden = !priv && (!ask || toAssistant);
+  $("to").textContent = priv ? "🔒 Only you and the assistant" : "✨ To the assistant";
   $("send").textContent = ask ? "Ask" : "Send";
   $("mode").textContent = toAssistant ? "💬" : "✨";
   $("mode").title = $("mode").ariaLabel = toAssistant ? "Switch to family chat" : "Switch to the assistant";
-  input.placeholder = toAssistant
+  input.placeholder = priv ? "Ask privately…"
+    : toAssistant
     ? "Ask the assistant…"
     : "Message, or /ask the assistant";
   input.style.height = "auto";
@@ -583,7 +621,7 @@ $("mode").onclick = () => {
   const toFamily = state.tab === "assistant";
   let text = input.value;
   if (!toFamily && text.trimStart().startsWith("/")) text = text.trimStart().slice(1).trimStart();
-  go(toFamily ? "family" : "assistant");
+  go(toFamily ? "family" : assistantHash());
   input.value = text;
   updateComposer();
   input.focus();
@@ -596,12 +634,13 @@ $("compose").addEventListener("submit", async (e) => {
   if (!text || !user || text === "/") return;
   $("send").disabled = true;
   try {
-    await addDoc(messagesRef, {
+    const priv = state.tab === "assistant" && state.scope === "me";
+    await addDoc(priv ? myThread() : messagesRef, {
       text,
       uid: user.uid,
       name: user.displayName || user.email,
       photo: user.photoURL || "",
-      channel: state.tab === "assistant" ? "assistant" : "family",
+      channel: priv ? "private" : state.tab === "assistant" ? "assistant" : "family",
       createdAt: serverTimestamp(),
     });
     input.value = "";
@@ -759,7 +798,7 @@ function renderMemory() {
   const body = $("memory-body");
   body.replaceChildren(
     h("h3", {}, "What the assistant remembers"),
-    h("p.lead", {}, "Everything here is visible to the whole family. To fix or forget something, ask: “/forget …” or “/that's wrong, …”."),
+    h("p.lead", {}, "These facts are visible to the whole family. To fix or forget something, ask: “/forget …” or “/that's wrong, …”."),
     h("div.stats", {},
       h("span.stat", {}, h("b", {}, String(state.memory.length)), "facts"),
       h("span.stat", {}, h("b", {}, String(state.places.length)), "places"),
@@ -770,11 +809,16 @@ function renderMemory() {
         h("div", {}, m.fact),
         h("div.sub", {}, [m.subject && `about ${m.subject}`, `from ${m.saidBy || m.createdBy || "?"}`, stampText(m.createdAt), m.updatedBy && `updated by ${m.updatedBy}`].filter(Boolean).join(" · ")))))
       : h("p.lead", {}, "Nothing yet. Tell the assistant things like “Maria is 8 and does ballet” and they'll show up here."),
+    state.myMemory.length > 0 && h("h3", {}, "🔒 Only you can see"),
+    state.myMemory.length > 0 && h("p.lead", {}, "Remembered from your private conversation with the assistant. Ask it there to change or forget any of these."),
+    state.myMemory.length > 0 && h("ul", {}, ...state.myMemory.map((m) => h("li", {},
+      h("div", {}, m.fact),
+      h("div.sub", {}, [m.subject && `about ${m.subject}`, stampText(m.createdAt)].filter(Boolean).join(" · "))))),
     h("h3", {}, "Recent changes"),
     state.audit.length
       ? h("ul", {}, ...state.audit.map((a) => h("li", {},
         h("div", {}, auditText(a)),
-        h("div.sub", {}, `${a.by || "?"} · ${stampText(a.createdAt)}${a.request ? ` · asked: “${a.request.length > 90 ? a.request.slice(0, 89) + "…" : a.request}”` : ""}`))))
+        h("div.sub", {}, `${a.by || "?"} · ${stampText(a.createdAt)}${a.request ? ` · asked: “${a.request.length > 90 ? a.request.slice(0, 89) + "…" : a.request}”` : a.via === "private" ? " · asked privately" : ""}`))))
       : h("p.lead", {}, "No changes yet."),
   );
 }

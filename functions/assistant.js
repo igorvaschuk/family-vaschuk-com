@@ -1,6 +1,12 @@
 // The family assistant: turns a chat request into Claude tool calls against
 // the family calendar (events), saved places, and memory.
 //
+// Requests come from three places: the family chat ("/..."), the shared
+// assistant tab, and each member's private thread (users/{uid}/thread).
+// A private request also sees that member's private memory
+// (users/{uid}/memory) and thread; nothing private goes into the family's
+// collections except calendar/place changes, which are shared by nature.
+//
 // Nothing here imports Firebase. index.js passes in a small `store` adapter,
 // a `callClaude` function, a `geocode` function and a `route` function
 // (driving minutes between two points), so tests can use fakes.
@@ -18,7 +24,7 @@ const LIMITS = { memory: 400, places: 300, events: 400, chat: 30 };
 export function requestText(msg) {
   if (!msg || msg.uid === ASSISTANT.uid || msg.kind) return null;
   const text = String(msg.text || "").trim();
-  if (msg.channel === "assistant") return text.replace(/^\/\s*/, "");
+  if (msg.channel === "assistant" || msg.channel === "private") return text.replace(/^\/\s*/, "");
   if (text.startsWith("/")) return text.slice(1).trim();
   return null;
 }
@@ -52,7 +58,13 @@ function eventLine(e, placesById) {
 export const REMINDER_BUFFER_MIN = 10;
 export const DEFAULT_DRIVE_MIN = 20;
 
-export function buildSystemPrompt({ now, memory, places, events, chat, requester, channel }) {
+const WHERE = {
+  family: "from the family chat (everyone sees your answer)",
+  assistant: "from the shared assistant tab (the whole family can read it)",
+  private: "in their private thread with you: only they see it",
+};
+
+export function buildSystemPrompt({ now, memory, places, events, chat, requester, channel, privateMemory = [], thread = [] }) {
   const placesById = new Map(places.map((p) => [p.id, p]));
   const home = places.find((p) => p.isHome);
   const upcoming = agenda(events, now.date, addDays(now.date, 13)).map((o) => {
@@ -65,7 +77,7 @@ export function buildSystemPrompt({ now, memory, places, events, chat, requester
   return `You are the Vaschuk family's assistant inside their private family chat (family.vaschuk.com). Your main job is keeping the children's schedule: a shared family calendar of activities, the places those activities happen, and directions to them. You also remember facts the family tells you.
 
 Right now it is ${now.weekday} ${now.date} ${now.time} in the family's time zone (${FAMILY_TZ}). All dates and times you read and write are wall-clock times in that zone.
-${requester} is asking${channel === "assistant" ? " from the assistant tab" : " from the family chat (everyone sees your answer)"}.
+${requester} is asking ${WHERE[channel] || WHERE.family}.
 
 How to work:
 - Make every change with a tool, and only say something is done after the tool succeeded. If a tool returns an error, fix the input and retry, or explain the problem.
@@ -78,11 +90,16 @@ How to work:
 - "Time to leave" reminders: for every timed event at a place on the map, all family devices with notifications on get a push at (driving time from home + ${REMINDER_BUFFER_MIN} min) before it starts, with a Navigate button. Driving time is computed automatically when a place is saved (without home, ${DEFAULT_DRIVE_MIN} min is assumed). Say the leave-by time when you add an activity. Turn reminders off for an event with remind: false if asked.
 - Calling: saved places with a phone number get a Call button in the app; when asked to call a place, make sure its phone is saved and tell them to tap Call.
 - Directions: when someone wants to go somewhere or asks for navigation, call get_directions; the app shows an "Open in Google Maps" button, so don't paste URLs.
-- Memory: when someone states a durable fact (children's names, which child does which activity, coaches and teachers, carpools, preferences, standing arrangements), call remember. Record only what people actually said, attributed to them; never record guesses. If a new fact replaces an old one, use update_memory; if asked to forget, use forget. Everything you remember is visible to the whole family and is auditable.
+${channel === "private" ? `- Private thread: what ${requester} says here stays between you and them. Never copy private details into family memory, event notes or the family chat unless they ask. Calendar and place changes are shared by nature: the family sees them and a short notice goes to the family chat, so say so if they seem to expect otherwise.
+- Private memory: remember things only ${requester} needs (their preferences, their own schedule, how they want things done) with remember and private: true. Facts the whole family should know (about the kids, shared plans) go to family memory with private: false; if unsure which, ask.
+` : ""}- Memory: when someone states a durable fact (children's names, which child does which activity, coaches and teachers, carpools, preferences, standing arrangements), call remember. Record only what people actually said, attributed to them; never record guesses. If a new fact replaces an old one, use update_memory; if asked to forget, use forget. Family memory is visible to the whole family and is auditable.
 - If asked for a JSON / export / dump of what you remember, call export_memory and give a one-line summary.
 - Replies are read on phones: short, plain text, no markdown (no **bold**, headings or tables). Use "•" lines for lists. Times like "5:30 PM", dates like "Tue Oct 27".
 
-MEMORY (${memory.length} facts):
+${channel === "private" ? `PRIVATE MEMORY (only ${requester} sees these, ${privateMemory.length} facts):
+${privateMemory.map((m) => `${m.id}: ${m.fact}${m.subject ? ` [about ${m.subject}]` : ""} (${m.createdDate || "?"})`).join("\n") || "(nothing yet)"}
+
+` : ""}FAMILY MEMORY (${memory.length} facts):
 ${memory.map((m) => `${m.id}: ${m.fact}${m.subject ? ` [about ${m.subject}]` : ""} (from ${m.saidBy || m.createdBy || "?"}, ${m.createdDate || "?"})`).join("\n") || "(nothing yet)"}
 
 SAVED PLACES (${places.length}):
@@ -95,7 +112,10 @@ NEXT 14 DAYS (expanded):
 ${upcoming.join("\n") || "(nothing scheduled)"}
 
 RECENT CHAT (oldest first, for context; "/" lines and "assistant" lines were requests to you):
-${chat.join("\n") || "(empty)"}`;
+${chat.join("\n") || "(empty)"}${channel === "private" ? `
+
+PRIVATE THREAD WITH ${requester.toUpperCase()} (oldest first):
+${thread.join("\n") || "(empty)"}` : ""}`;
 }
 
 /* ------------------------------------------------------------------- tools */
@@ -211,6 +231,21 @@ export const TOOLS = [
   },
 ];
 
+/** TOOLS, plus the private-memory switch in a member's private thread. */
+export function toolsFor(channel) {
+  if (channel !== "private") return TOOLS;
+  return TOOLS.map((t) => t.name !== "remember" ? t : {
+    ...t,
+    input_schema: {
+      ...t.input_schema,
+      properties: {
+        ...t.input_schema.properties,
+        private: { type: "boolean", description: "true (default here): only the person asking can see it. false: family memory, visible to everyone." },
+      },
+    },
+  });
+}
+
 /* --------------------------------------------------------- tool execution */
 
 class ToolError extends Error {}
@@ -265,11 +300,16 @@ export function matchPlace(places, text) {
  * { text, refs: { events, places }, links, changes, familyNotice }.
  */
 export async function runRequest({ store, callClaude, geocode, route = async () => null, request, msgId, msg, now = familyNow(), log = () => {} }) {
-  const [memory, places, events, chatMsgs] = await Promise.all([
+  const channel = ["assistant", "private"].includes(msg.channel) ? msg.channel : "family";
+  const isPrivate = channel === "private";
+  const mine = (c) => `users/${msg.uid}/${c}`;
+  const [memory, places, events, chatMsgs, privateMemory, threadMsgs] = await Promise.all([
     store.list("memory", LIMITS.memory),
     store.list("places", LIMITS.places),
     store.list("events", LIMITS.events),
     store.recentMessages(LIMITS.chat + 1),
+    isPrivate ? store.list(mine("memory"), LIMITS.memory) : [],
+    isPrivate ? store.recentThread(msg.uid, LIMITS.chat + 1) : [],
   ]);
   const by = msg.name || "Someone";
   const requester = { uid: msg.uid, name: by };
@@ -277,19 +317,32 @@ export async function runRequest({ store, callClaude, geocode, route = async () 
   const links = [];
   const changes = []; // { kind, summary }
 
+  const when = (m) => m.createdAt ? `${m.createdAt.date} ${m.createdAt.time}` : "";
   const chat = chatMsgs.filter((m) => m.id !== msgId).slice(-LIMITS.chat).map((m) => {
-    const when = m.createdAt ? `${m.createdAt.date} ${m.createdAt.time}` : "";
     const where = m.uid === ASSISTANT.uid ? "assistant" : m.channel === "assistant" ? "to assistant" : "family chat";
-    return `[${when}] ${m.name} (${where}): ${clip(m.text, 400)}`;
+    return `[${when(m)}] ${m.name} (${where}): ${clip(m.text, 400)}`;
   });
+  const thread = threadMsgs.filter((m) => m.id !== msgId).slice(-LIMITS.chat)
+    .map((m) => `[${when(m)}] ${m.uid === ASSISTANT.uid ? "you" : m.name}: ${clip(m.text, 400)}`);
 
   const placeById = (id) => places.find((p) => p.id === id) || fail(`no saved place with id ${id}`);
+  /** A family fact, or (in a private thread) one of the requester's private facts. */
+  const memoryById = (id) => {
+    const priv = privateMemory.find((x) => x.id === id);
+    if (priv) return { m: priv, list: privateMemory, priv: true };
+    const m = memory.find((x) => x.id === id) || fail(`no memory with id ${id}`);
+    return { m, list: memory, priv: false };
+  };
   const eventById = (id) => events.find((e) => e.id === id) || fail(`no event with id ${id}`);
 
-  async function audit(action, targetId, before, after) {
-    await store.add("auditLog", {
+  // Private requests' words stay private: the family log records the change
+  // but not what was asked; changes to private memory are logged privately.
+  async function audit(action, targetId, before, after, { priv = false } = {}) {
+    await store.add(priv ? mine("auditLog") : "auditLog", {
       action, targetId, before: before ?? null, after: after ?? null,
-      by, byUid: msg.uid, requestId: msgId, request: clip(request, 500),
+      by, byUid: msg.uid, requestId: msgId,
+      request: isPrivate && !priv ? null : clip(request, 500),
+      ...(isPrivate ? { via: "private" } : {}),
     });
   }
 
@@ -562,35 +615,37 @@ export async function runRequest({ store, callClaude, geocode, route = async () 
       return { ok: true };
     },
 
-    async remember({ fact, subject }) {
+    async remember({ fact, subject, private: priv }) {
       fact = str(fact, 500, "fact") || fail("fact is required");
-      if (memory.some((m) => norm(m.fact) === norm(fact))) return { ok: true, note: "already remembered" };
+      priv = isPrivate && priv !== false;
+      const list = priv ? privateMemory : memory;
+      if (list.some((m) => norm(m.fact) === norm(fact))) return { ok: true, note: "already remembered" };
       const data = { fact, subject: str(subject, 80, "subject"), saidBy: by, saidByUid: msg.uid, createdBy: by, sourceMessageId: msgId, createdDate: now.date };
-      const id = await store.add("memory", data);
-      memory.push({ id, ...data });
-      await audit("memory.add", id, null, data);
-      changes.push({ kind: "memory", summary: `remembered: ${fact}` });
-      return { ok: true, id };
+      const id = await store.add(priv ? mine("memory") : "memory", data);
+      list.push({ id, ...data });
+      await audit("memory.add", id, null, data, { priv });
+      changes.push({ kind: "memory", summary: `remembered${priv ? " privately" : ""}: ${fact}` });
+      return { ok: true, id, private: priv };
     },
 
     async update_memory({ id, fact, subject }) {
-      const m = memory.find((x) => x.id === id) || fail(`no memory with id ${id}`);
+      const { m, priv } = memoryById(id);
       const { id: _, ...before } = m;
       const patch = { fact: str(fact, 500, "fact") || fail("fact is required"), updatedBy: by, updatedDate: now.date };
       if (subject !== undefined) patch.subject = str(subject, 80, "subject");
-      await store.update("memory", id, patch);
+      await store.update(priv ? mine("memory") : "memory", id, patch);
       Object.assign(m, patch);
-      await audit("memory.update", id, before, patch);
+      await audit("memory.update", id, before, patch, { priv });
       changes.push({ kind: "memory", summary: `updated memory: ${patch.fact}` });
       return { ok: true };
     },
 
     async forget({ id, reason }) {
-      const m = memory.find((x) => x.id === id) || fail(`no memory with id ${id}`);
+      const { m, list, priv } = memoryById(id);
       const { id: _, ...before } = m;
-      await store.del("memory", id);
-      memory.splice(memory.indexOf(m), 1);
-      await audit("memory.forget", id, before, reason ? { reason: clip(reason, 300) } : null);
+      await store.del(priv ? mine("memory") : "memory", id);
+      list.splice(list.indexOf(m), 1);
+      await audit("memory.forget", id, before, reason ? { reason: clip(reason, 300) } : null, { priv });
       changes.push({ kind: "memory", summary: `forgot: ${m.fact}` });
       return { ok: true };
     },
@@ -628,11 +683,12 @@ export async function runRequest({ store, callClaude, geocode, route = async () 
     }
   }
 
-  const system = buildSystemPrompt({ now, memory, places, events, chat, requester: by, channel: msg.channel || "family" });
+  const system = buildSystemPrompt({ now, memory, places, events, chat, requester: by, channel, privateMemory, thread });
+  const toolList = toolsFor(channel);
   const messages = [{ role: "user", content: `${by}: ${request || "(empty request — briefly say what you can help with)"}` }];
   let text = "";
   for (let step = 0; step < MAX_STEPS; step++) {
-    const res = await callClaude({ system, messages, tools: TOOLS });
+    const res = await callClaude({ system, messages, tools: toolList });
     if (res.stop_reason === "pause_turn") {
       messages.push({ role: "assistant", content: res.content });
       continue;
@@ -659,9 +715,9 @@ export async function runRequest({ store, callClaude, geocode, route = async () 
     refs: { events: [...refs.events].filter((id) => events.some((e) => e.id === id)), places: [...refs.places].filter((id) => places.some((p) => p.id === id)) },
     links,
     changes: changes.map((c) => c.summary),
-    // Calendar changes made from the assistant tab are announced in the
-    // family chat so nobody misses a schedule change.
-    familyNotice: (msg.channel === "assistant" && calendarChanges.length)
+    // Calendar changes made outside the family chat (assistant tab or a
+    // private thread) are announced there so nobody misses a schedule change.
+    familyNotice: (channel !== "family" && calendarChanges.length)
       ? `${by} updated the calendar: ${calendarChanges.map((c) => c.summary).join("; ")}.`
       : null,
   };

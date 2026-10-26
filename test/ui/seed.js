@@ -19,6 +19,13 @@ window.__SEED = {
     { id: "a1", action: "place.create", after: { name: "Princeton Ballet School" }, by: "Igor", request: "add Maria's ballet academy tue/thu 6:30-8PM", createdAt: at("2026-10-25T20:10:00Z") },
     { id: "a2", action: "event.create", after: { title: "Ballet" }, by: "Igor", request: "add Maria's ballet academy tue/thu 6:30-8PM", createdAt: at("2026-10-25T20:10:01Z") },
   ],
+  "users/u-igor/memory": [
+    { id: "pk1", fact: "Igor works late on Wednesdays.", subject: "Igor", createdAt: at("2026-10-25T19:40:00Z") },
+  ],
+  "users/u-igor/thread": [
+    { id: "t1", text: "Remember that I work late on Wednesdays", uid: "u-igor", name: "Igor Vaschuk", photo: "", channel: "private", status: "done", createdAt: at("2026-10-25T19:40:00Z") },
+    { id: "t2", uid: "assistant", name: "Family Assistant", photo: "", channel: "private", kind: "reply", replyTo: "t1", text: "Got it, I'll keep that just for you. Olga is down for Wednesday swim pickup, so nothing to change there.", refs: { events: [], places: [] }, links: [], createdAt: at("2026-10-25T19:40:06Z") },
+  ],
   messages: [
     { id: "m1", text: "Who's picking up Dima from swim Monday?", uid: "u-olga", name: "Olga Vaschuk", photo: "", createdAt: at("2026-10-25T19:30:00Z") },
     { id: "m2", text: "I can do it", uid: "u-igor", name: "Igor Vaschuk", photo: "", createdAt: at("2026-10-25T19:31:00Z") },
