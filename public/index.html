@@ -385,6 +385,10 @@
       line-height: 1;
     }
     .mode:hover { border-color: var(--accent); }
+    .mic[hidden] { display: none; }
+    .mic.on { background: var(--accent); border-color: var(--accent); color: #fff; font-size: 16px; animation: listening 1.4s ease-in-out infinite; }
+    @keyframes listening { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent); } }
+    @media (prefers-reduced-motion: reduce) { .mic.on { animation: none; } }
     .field { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
     .field .to { font-size: 12px; font-weight: 700; color: var(--leaf); padding-left: 4px; }
     .compose textarea {
@@ -535,6 +539,7 @@
         <span class="to" id="to" hidden>✨ To the assistant</span>
         <textarea id="text" rows="1" maxlength="2000" aria-label="Message" required></textarea>
       </div>
+      <button class="mode mic" id="mic" type="button" aria-label="Speak your message" aria-pressed="false" hidden>🎤</button>
       <button class="send" id="send" type="submit">Send</button>
     </form>
   </div>
