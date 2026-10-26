@@ -367,13 +367,17 @@ export function importer({ store, api, uid, by, now = familyNow(), audit = async
     // Number new offers in date order, so a list reads top to bottom.
     fresh.sort((a, b) => (a.first < b.first ? -1 : a.first > b.first ? 1 : 0));
     for (const o of fresh) {
-      const offer = { ...o, n: st.settings.nextN, status: "new", firstSeen: now.date };
+      // Already in the family calendar (offers are forgotten on Disconnect,
+      // imported events aren't): don't offer it again.
+      const added = st.events.some((e) => e.id === familyIdFor(uid, o.calendarId, o.eventId));
+      const offer = { ...o, n: st.settings.nextN, status: added ? "added" : "new", firstSeen: now.date };
       await saveSettings({ nextN: st.settings.nextN + 1 });
       const { key, ...doc } = offer;
       await store.set(offersColl, key, doc);
       const row = { id: key, ...doc };
       st.offers.push(row);
       byKey.set(key, row);
+      if (added) continue;
       const rule = st.settings.rules.find((r) => ruleMatches(r, row));
       try {
         if (rule?.decision === "add") await decide(row, "add", { w });
