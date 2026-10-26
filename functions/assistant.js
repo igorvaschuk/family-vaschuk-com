@@ -64,7 +64,16 @@ const WHERE = {
   private: "in their private thread with you: only they see it",
 };
 
-export function buildSystemPrompt({ now, memory, places, events, chat, requester, channel, privateMemory = [], thread = [] }) {
+/** What the assistant knows about the requester's Google Calendar link (private thread only). */
+function gcalLine(requester, gcal) {
+  if (gcal?.state === "connected" || gcal?.state === "syncing") {
+    return `${requester}'s Google Calendar is connected (${gcal.email || "their Google account"}): every family calendar event is copied automatically into a "Vaschuk Family" calendar there, so nothing needs doing per event. Changes must be made here, in the family calendar; edits made in Google are overwritten.`;
+  }
+  if (gcal?.state === "error") return `${requester}'s Google Calendar link has a problem: ${gcal.error || "unknown"}. The card at the top of this conversation has a Reconnect button.`;
+  return `${requester} hasn't connected Google Calendar. If they ask about it, tell them to tap "Connect Google Calendar" at the top of this conversation; then every family event appears in a "Vaschuk Family" calendar in their Google Calendar.`;
+}
+
+export function buildSystemPrompt({ now, memory, places, events, chat, requester, channel, privateMemory = [], thread = [], gcal = null }) {
   const placesById = new Map(places.map((p) => [p.id, p]));
   const home = places.find((p) => p.isHome);
   const upcoming = agenda(events, now.date, addDays(now.date, 13)).map((o) => {
@@ -91,9 +100,11 @@ How to work:
 - Calling: saved places with a phone number get a Call button in the app; when asked to call a place, make sure its phone is saved and tell them to tap Call.
 - Directions: when someone wants to go somewhere or asks for navigation, call get_directions; the app shows an "Open in Google Maps" button, so don't paste URLs.
 ${channel === "private" ? `- Private thread: what ${requester} says here stays between you and them. Never copy private details into family memory, event notes or the family chat unless they ask. Calendar and place changes are shared by nature: the family sees them and a short notice goes to the family chat, so say so if they seem to expect otherwise.
+- Google Calendar: ${gcalLine(requester, gcal)} Bringing their own Google events into the family calendar is coming soon.
 - Private memory: remember things only ${requester} needs (their preferences, their own schedule, how they want things done) with remember and private: true. Facts the whole family should know (about the kids, shared plans) go to family memory with private: false; if unsure which, ask.
 ` : ""}- Memory: when someone states a durable fact (children's names, which child does which activity, coaches and teachers, carpools, preferences, standing arrangements), call remember. Record only what people actually said, attributed to them; never record guesses. If a new fact replaces an old one, use update_memory; if asked to forget, use forget. Family memory is visible to the whole family and is auditable.
-- If asked for a JSON / export / dump of what you remember, call export_memory and give a one-line summary.
+${channel === "private" ? "" : `- Google Calendar: each member can copy the family calendar into their own Google Calendar from the Assistant tab → Just me → Connect Google Calendar.
+`}- If asked for a JSON / export / dump of what you remember, call export_memory and give a one-line summary.
 - Replies are read on phones: short, plain text, no markdown (no **bold**, headings or tables). Use "•" lines for lists. Times like "5:30 PM", dates like "Tue Oct 27".
 
 ${channel === "private" ? `PRIVATE MEMORY (only ${requester} sees these, ${privateMemory.length} facts):
@@ -303,13 +314,14 @@ export async function runRequest({ store, callClaude, geocode, route = async () 
   const channel = ["assistant", "private"].includes(msg.channel) ? msg.channel : "family";
   const isPrivate = channel === "private";
   const mine = (c) => `users/${msg.uid}/${c}`;
-  const [memory, places, events, chatMsgs, privateMemory, threadMsgs] = await Promise.all([
+  const [memory, places, events, chatMsgs, privateMemory, threadMsgs, gcal] = await Promise.all([
     store.list("memory", LIMITS.memory),
     store.list("places", LIMITS.places),
     store.list("events", LIMITS.events),
     store.recentMessages(LIMITS.chat + 1),
     isPrivate ? store.list(mine("memory"), LIMITS.memory) : [],
     isPrivate ? store.recentThread(msg.uid, LIMITS.chat + 1) : [],
+    isPrivate && store.get ? store.get(mine("settings/gcal")) : null,
   ]);
   const by = msg.name || "Someone";
   const requester = { uid: msg.uid, name: by };
@@ -683,7 +695,7 @@ export async function runRequest({ store, callClaude, geocode, route = async () 
     }
   }
 
-  const system = buildSystemPrompt({ now, memory, places, events, chat, requester: by, channel, privateMemory, thread });
+  const system = buildSystemPrompt({ now, memory, places, events, chat, requester: by, channel, privateMemory, thread, gcal });
   const toolList = toolsFor(channel);
   const messages = [{ role: "user", content: `${by}: ${request || "(empty request — briefly say what you can help with)"}` }];
   let text = "";

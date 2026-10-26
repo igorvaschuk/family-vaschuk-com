@@ -15,6 +15,12 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "rewrites": [
+      {
+        "source": "/gcal/**",
+        "function": { "functionId": "gcal", "region": "us-central1" }
+      }
+    ],
     "headers": [
       {
         "source": "**",

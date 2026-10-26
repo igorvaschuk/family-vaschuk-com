@@ -62,6 +62,12 @@ service cloud.firestore {
     match /users/{uid}/auditLog/{id} {
       allow read: if isOwner(uid);
     }
+    // Per-member settings written by the functions, e.g. settings/gcal: the
+    // Google Calendar link's status. The Google tokens themselves live in
+    // gcalAccounts, which no client can read.
+    match /users/{uid}/settings/{id} {
+      allow read: if isOwner(uid);
+    }
 
     // Push tokens, one doc per device (doc id = FCM token). Only the Cloud
     // Function reads them. A member can claim a token (devices can switch

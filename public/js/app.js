@@ -62,6 +62,7 @@ const state = {
   audit: [],
   mine: [], // my private thread
   myMemory: [],
+  gcal: null, // my Google Calendar link status (users/{uid}/settings/gcal)
   tab: "family",
   scope: "family", // assistant tab: "family" or "me" (private thread)
   week: sundayOf(familyNow().date),
@@ -213,6 +214,10 @@ onAuthStateChanged(auth, (user) => {
   watch("auditLog", query(collection(db, "auditLog"), orderBy("createdAt", "desc"), limit(60)), "audit", renderMemory);
   watch("thread", query(myThread(), orderBy("createdAt"), limitToLast(300)), "mine", renderMessages);
   watch("myMemory", query(collection(db, "users", user.uid, "memory"), orderBy("createdAt")), "myMemory", renderMemory);
+  unsubs.push(onSnapshot(doc(db, "users", user.uid, "settings", "gcal"), (snap) => {
+    state.gcal = snap.exists() ? snap.data({ serverTimestamps: "estimate" }) : null;
+    renderGcal();
+  }, (err) => err.code !== "permission-denied" && console.error("gcal", err)));
   route();
 });
 
@@ -234,6 +239,7 @@ function route() {
     try { localStorage.setItem("assistant-scope", state.scope); } catch {}
     $("assistant-list").hidden = state.scope === "me";
     $("private-list").hidden = state.scope !== "me";
+    $("gcal-card").hidden = state.scope !== "me";
     $("scope-family").setAttribute("aria-pressed", String(state.scope === "family"));
     $("scope-me").setAttribute("aria-pressed", String(state.scope === "me"));
   }
@@ -579,6 +585,68 @@ function emptyPrivate() {
   return h("div.empty", {},
     h("div", {}, "🔒 Just you and the assistant. The family doesn't see this conversation or what it remembers for you here. Calendar changes are still shared: the family sees them, with a short note in the family chat."),
     h("div.suggest", {}, ...ideas.map((t) => h("button.btn", { type: "button", onclick: () => fill(t) }, t))));
+}
+
+/* -------------------------------------------------------- Google Calendar */
+// Each member can link their Google Calendar; the gcal function (behind
+// /gcal/* on this site) copies every family event into a "Vaschuk Family"
+// calendar there. Tokens never reach the page: it only sees the status doc.
+
+async function gcalCall(action) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch("/gcal/" + action, { method: "POST", headers: { Authorization: "Bearer " + token } });
+  if (!res.ok) throw new Error(`gcal ${action}: ${res.status}`);
+  return res.json();
+}
+
+async function gcalAction(action, button) {
+  if (action === "disconnect" && !confirm("Stop copying family events to your Google Calendar? The “Vaschuk Family” calendar will be removed from your Google account.")) return;
+  button.disabled = true;
+  try {
+    const out = await gcalCall(action);
+    if (out.url) return void (location.href = out.url);
+    toast(action === "resync" ? "Copying family events again…" : "Google Calendar disconnected");
+  } catch (e) {
+    console.error(e);
+    alert("That didn't work. Please try again in a minute.");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderGcal() {
+  const s = state.gcal;
+  const card = $("gcal-card");
+  const btn = (label, action, cls = "") => h("button.btn" + cls, { type: "button", onclick: (e) => gcalAction(action, e.currentTarget) }, label);
+  card.classList.toggle("err", s?.state === "error");
+  if (!s || s.state === "off") {
+    card.replaceChildren(
+      h("span.what", {}, "📅 Get every family event in your Google Calendar", h("span.sub", {}, "Adds a “Vaschuk Family” calendar to your Google account and keeps it up to date.")),
+      btn("Connect Google Calendar", "start", ".primary"));
+  } else if (s.state === "error") {
+    card.replaceChildren(
+      h("span.what", {}, "⚠️ Google Calendar isn't syncing", h("span.sub", {}, s.error || "")),
+      h("div.row", {}, btn("Reconnect", "start", ".primary"), btn("Disconnect", "disconnect")));
+  } else {
+    const when = s.state === "syncing" ? "copying family events…" : s.lastSyncAt ? `synced ${stampText(s.lastSyncAt)}` : "";
+    card.replaceChildren(
+      h("span.what", {}, "📅 Family events go to “Vaschuk Family” in your Google Calendar",
+        h("span.sub", {}, [s.email, when, s.error].filter(Boolean).join(" · "))),
+      h("div.row", {}, btn("Sync now", "resync"), btn("Disconnect", "disconnect")));
+  }
+}
+
+// Back from Google's consent screen: /?gcal=<result>#assistant/me
+{
+  const result = new URLSearchParams(location.search).get("gcal");
+  if (result) {
+    history.replaceState(null, "", location.pathname + location.hash);
+    toast({
+      connected: "Google Calendar connected. Copying family events…",
+      denied: "Google Calendar wasn't connected (calendar access is needed).",
+      expired: "That took too long. Please tap Connect again.",
+    }[result] || "Couldn't connect Google Calendar. Please try again.");
+  }
 }
 
 /* --------------------------------------------------------------- composer */

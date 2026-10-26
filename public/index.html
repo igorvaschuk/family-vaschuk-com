@@ -253,6 +253,15 @@
       padding: 8px 12px; background: var(--bg); border-bottom: 1px solid var(--edge);
     }
     .scope .btn { flex: 1; max-width: 180px; justify-content: center; }
+    .gcal {
+      margin: 12px 16px 0; padding: 10px 12px;
+      background: var(--card); border: 1px solid var(--edge); border-radius: 14px;
+      display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 14px;
+    }
+    .gcal .what { flex: 1 1 200px; min-width: 0; }
+    .gcal .sub { display: block; color: var(--muted); font-size: 13px; }
+    .gcal.err { border-color: var(--accent); }
+    .gcal[hidden] { display: none; }
     .attach { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
     .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
 
@@ -507,6 +516,7 @@
         <a class="btn" id="scope-family" href="#assistant">👨‍👩‍👧 Family</a>
         <a class="btn" id="scope-me" href="#assistant/me">🔒 Just me</a>
       </div>
+      <div class="gcal" id="gcal-card" hidden></div>
       <div class="messages" id="assistant-list" aria-live="polite"></div>
       <div class="messages" id="private-list" aria-live="polite" hidden></div>
     </section>
