@@ -20,7 +20,7 @@
 <body>
   <main>
     <h1>The <span>Vaschuk</span> Family: privacy</h1>
-    <p class="muted">This is a private site for one family. Only Google accounts the family has invited can sign in.</p>
+    <p class="muted">This is a private site for one family, family.vaschuk.com. Only Google accounts the family has invited can sign in. Last updated October 26, 2026.</p>
 
     <h2>What the site keeps</h2>
     <p>The family chat, the family calendar, saved places, and what members asked the family assistant to remember. Each member's private conversation with the assistant, and anything it remembers just for them, is visible only to that member. Everything is stored in Google Firebase and used only to run this site.</p>
@@ -31,11 +31,17 @@
     <p>The site uses this access only for these two things: copying the family calendar into that one calendar, and bringing in the events the member chose. Google user data is not sold, shared with anyone, used for advertising, or used to train AI models. The access token is stored where only the site's server code can read it.</p>
     <p>Disconnecting (Assistant → Just me → Disconnect) deletes the "Vaschuk Family" calendar from the Google account, revokes the site's access, and deletes the stored token. Access can also be removed at any time from <a href="https://myaccount.google.com/permissions">your Google Account's third-party connections</a>.</p>
 
-    <h2>The assistant</h2>
-    <p>Requests to the family assistant are answered by Claude (Anthropic), which receives the request together with the family calendar, places and memory needed to answer it.</p>
+    <h2>Google API Services User Data Policy</h2>
+    <p>The use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
 
-    <h2>Questions or deletion</h2>
-    <p>Ask the family member who invited you; they can remove your account and its data.</p>
+    <h2>The assistant</h2>
+    <p>Requests to the family assistant are answered by Claude (Anthropic), which receives the request together with the family calendar, places and memory needed to answer it. When a member asks the assistant to check their own Google Calendar, the titles, times and locations of the events found are also sent to Claude, only so it can show them to that member in their private conversation and add the ones they choose. Anthropic does not use data sent through its API to train its models.</p>
+
+    <h2>Keeping and deleting data</h2>
+    <p>Family chat, calendar, places and memory are kept until the family deletes them. Disconnecting Google Calendar deletes the stored Google access, the list of calendar events that were offered, and the import settings, right away; events a member already added stay in the family calendar but no longer follow their Google Calendar. Anyone can ask for their data to be deleted using the contact below.</p>
+
+    <h2>Contact</h2>
+    <p>Questions, or a request to delete your data: <a href="mailto:vasche@gmail.com">vasche@gmail.com</a>.</p>
   </main>
 </body>
 </html>

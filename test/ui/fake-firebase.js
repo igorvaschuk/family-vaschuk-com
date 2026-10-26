@@ -14,7 +14,8 @@ const user = { uid: "u-igor", displayName: "Igor Vaschuk", email: "igor@example.
 const auth = { currentUser: user };
 export const getAuth = () => auth;
 export class GoogleAuthProvider {}
-export const onAuthStateChanged = (_a, cb) => setTimeout(() => cb(user), 10);
+// window.__signedOut: show the signed-out home page.
+export const onAuthStateChanged = (_a, cb) => setTimeout(() => cb(window.__signedOut ? null : user), 10);
 export const signInWithPopup = async () => {};
 export const signOut = async () => {};
 // firestore
