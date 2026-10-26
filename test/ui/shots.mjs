@@ -25,7 +25,7 @@ await page.fill("#text", "Sync my dentist appointments");
 await page.click("#send");
 await page.waitForTimeout(300);
 console.log("private send:", await page.evaluate(() => JSON.stringify({
-  thread: window.__store["users/u-igor/thread"].at(-1).channel,
+  thread: window.__store["users/u-igor/thread"].filter((m) => m.text === "Sync my dentist appointments").map((m) => m.channel),
   family: window.__store.messages.some((m) => m.text === "Sync my dentist appointments"),
 })));
 await page.screenshot({ path: `${out}/assistant-me-sent.png` });
@@ -69,5 +69,17 @@ await page.goto("http://localhost:8123/#calendar");
 await page.waitForTimeout(300);
 console.log("calendar next-week check:", await page.evaluate(() => document.querySelector(".calbar h3").textContent));
 await page.screenshot({ path: `${out}/calendar-full.png`, fullPage: false });
+// Dictation: speech is added after what's typed, then stops on Send.
+await page.goto("http://localhost:8123/#family");
+await page.waitForTimeout(300);
+await page.fill("#text", "Hi all,");
+await page.click("#mic");
+await page.evaluate(() => { window.__say("who is picking", false); window.__say("who is picking up Dima"); window.__say("from swim today", false); });
+await page.waitForTimeout(100);
+await page.screenshot({ path: `${out}/dictation.png` });
+console.log("dictation:", JSON.stringify(await page.inputValue("#text")), "| mic:", await page.getAttribute("#mic", "aria-pressed"));
+await page.click("#send");
+await page.waitForTimeout(200);
+console.log("after send: mic", await page.getAttribute("#mic", "aria-pressed"), "| sent:", JSON.stringify(await page.evaluate(() => window.__store.messages.filter((m) => /Hi all/.test(m.text)).map((m) => m.text + " [" + (m.channel || "family") + "]"))));
 console.log("errors:", JSON.stringify(errors));
 await browser.close();

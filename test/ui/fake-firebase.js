@@ -1,9 +1,10 @@
 // In-memory stand-in for the Firebase JS SDK modules (UI tests only).
 const ts = (d) => ({ toDate: () => new Date(d) });
 const seed = window.__SEED || {};
-const store = Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, v.map((x) => ({ ...x }))]));
-const listeners = [];
-window.__store = store; // tests change "server" data here without notifying listeners
+// This file is served for every Firebase module (app, auth, firestore,
+// messaging), so it runs once per module: they all share one store.
+const store = window.__store ||= Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, v.map((x) => ({ ...x }))]));
+const listeners = window.__listeners ||= [];
 let n = 1000;
 const fire = (name) => listeners.filter((l) => l.name === name).forEach((l) => l.emit());
 
@@ -74,6 +75,20 @@ export async function addDoc(ref, data) {
 }
 export const setDoc = async () => {};
 export const deleteDoc = async () => {};
+// Speech recognition: window.__say("words", isFinal) plays a result into the
+// running recognizer; window.__mics counts starts.
+window.SpeechRecognition = window.webkitSpeechRecognition = class {
+  start() {
+    window.__mics = (window.__mics || 0) + 1;
+    const results = [];
+    window.__say = (text, final = true) => {
+      if (results.length && !results.at(-1).isFinal) results.pop();
+      results.push(Object.assign([{ transcript: text }], { isFinal: final }));
+      this.onresult?.({ results });
+    };
+  }
+  stop() { setTimeout(() => this.onend?.(), 0); }
+};
 // messaging
 export const isSupported = async () => false;
 export const getMessaging = () => ({});

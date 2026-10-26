@@ -695,8 +695,59 @@ $("mode").onclick = () => {
   input.focus();
 };
 
+/* -------------------------------------------------------------- dictation */
+// Speech to text with the browser's own recognizer (Web Speech API: Chrome,
+// Edge, Safari; the button stays hidden where there is none). The words land
+// in the message box to check and fix; nothing is sent until Send is tapped.
+
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let dictation = null;
+$("mic").hidden = !Recognition;
+
+function setListening(on) {
+  $("mic").classList.toggle("on", on);
+  $("mic").setAttribute("aria-pressed", String(on));
+  $("mic").textContent = on ? "■" : "🎤";
+  $("mic").ariaLabel = $("mic").title = on ? "Stop listening" : "Speak your message";
+  if (on) input.placeholder = "Listening…";
+  else updateComposer();
+}
+
+function startDictation() {
+  const rec = new Recognition();
+  rec.lang = navigator.language || "en-US";
+  rec.interimResults = true;
+  rec.continuous = true;
+  // Speech is added after whatever is already typed.
+  const typed = input.value.trim();
+  rec.onresult = (e) => {
+    const said = [...e.results].map((r) => r[0].transcript.trim()).filter(Boolean).join(" ");
+    input.value = [typed, said].filter(Boolean).join(" ");
+    updateComposer();
+  };
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Microphone access is blocked for this site");
+    else if (e.error === "no-speech") toast("Didn't hear anything");
+    else if (e.error !== "aborted") toast("Speech to text isn't working right now");
+  };
+  rec.onend = () => {
+    if (dictation === rec) dictation = null;
+    setListening(false);
+    input.focus();
+  };
+  dictation = rec;
+  rec.start();
+  setListening(true);
+}
+const stopDictation = () => dictation?.stop();
+
+$("mic").onclick = () => (dictation ? stopDictation() : startDictation());
+addEventListener("hashchange", stopDictation);
+document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && stopDictation());
+
 $("compose").addEventListener("submit", async (e) => {
   e.preventDefault();
+  stopDictation();
   const text = input.value.trim();
   const user = auth.currentUser;
   if (!text || !user || text === "/") return;
