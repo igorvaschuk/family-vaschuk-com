@@ -82,12 +82,12 @@ function importSection(requester, gcal, imp) {
     return `\n\nBRINGING ${requester.toUpperCase()}'S OWN EVENTS IN: not allowed yet. If they want events from their own Google Calendar in the family calendar, tell them to tap "Bring in my events" on the Google Calendar card at the top of this conversation (Google will ask to let the site read their calendars; it shows an "unverified app" screen once: Advanced → continue).`;
   }
   return `\n\nBRINGING ${requester.toUpperCase()}'S OWN EVENTS IN (from their Google Calendar; private until added):
-Looking at: ${imp.calendars.map((c) => c.name).join(", ") || "no calendars chosen yet"}
+Looking at: ${imp.calendars.map((c) => c.name).join(", ") || "their main calendar (nothing else chosen yet)"}
 Rules: ${imp.rules.map((r) => `${r.id}: always ${r.decision}${r.calendarName ? ` events from ${r.calendarName}` : ""}${r.titleContains ? ` with "${r.titleContains}" in the title` : ""} ("${r.note}")`).join("; ") || "none"}
 Waiting for an answer (number. title — when [calendar]):
 ${imp.waiting.slice(0, 40).map((o) => `${o.n}. ${o.title} — ${o.when} [${o.calendar}]${o.repeats ? " (repeats)" : ""}`).join("\n") || "(none)"}
 How to work:
-- To bring events in: if no calendars are chosen, call my_google_calendars and ask which to look at (suggest leaving out work calendars). Then check_my_google_calendar (next ${WINDOW_DAYS} days by default) and give a short summary first, e.g. "23 events in the next 4 weeks, 6 of them repeating. Add all, some, or none?"
+- When they ask what's new or want events brought in, call check_my_google_calendar right away (next ${WINDOW_DAYS} days by default; it starts with their main calendar when nothing else is chosen) and give a short summary first, e.g. "23 events in the next 4 weeks, 6 of them repeating. Add all, some, or none?" Don't ask which calendars before checking. Say where you looked; the first time, mention you can also look at their other calendars (my_google_calendars, choose_import_calendars), leaving out work ones unless they want them.
 - If "some", list them numbered exactly as the tool returned them ("n. title — when"), grouped by day when the list is long, and let them answer with numbers or descriptions ("the kids' stuff, not work"). "All" means every waiting number; "none" means skip_from_my_calendar for all of them.
 - Work out who each event is for from the title and memory; ask when unclear, and pass it as who.
 - Never add their events without a yes or a rule. When answers show a clear pattern, offer to make it a rule (add_import_rule), e.g. "always add events from Kids".
@@ -278,7 +278,7 @@ export const IMPORT_TOOLS = [
   },
   {
     name: "check_my_google_calendar",
-    description: "Look through the chosen calendars for upcoming events that haven't been added or skipped yet. Returns numbered offers (a repeating series is one offer). Rules are applied first.",
+    description: "Look through the requester's calendars (their main one unless others were chosen) for upcoming events that haven't been added or skipped yet. Returns numbered offers (a repeating series is one offer). Rules are applied first.",
     input_schema: { type: "object", properties: { days: { type: "integer", minimum: 7, maximum: 90, description: `How many days ahead (default ${WINDOW_DAYS}).` } } },
   },
   {
@@ -777,7 +777,8 @@ export async function runRequest({ store, callClaude, geocode, route = async () 
   const importOps = {
     my_google_calendars: () => imp.calendars(),
     choose_import_calendars: ({ calendars }) => imp.chooseCalendars(calendars || []).then((names) => ({ ok: true, looking_at: names })),
-    check_my_google_calendar: ({ days }) => imp.check(days ? Math.max(7, Math.min(90, Math.floor(days))) : undefined).then((waiting) => ({ waiting, count: waiting.length, repeating: waiting.filter((o) => o.repeats).length })),
+    check_my_google_calendar: ({ days }) => imp.check(days ? Math.max(7, Math.min(90, Math.floor(days))) : undefined)
+      .then(({ waiting, lookingAt }) => ({ looked_at: lookingAt, waiting, count: waiting.length, repeating: waiting.filter((o) => o.repeats).length })),
     add_from_my_calendar: ({ items }) => imp.add((items || []).map((i) => ({ n: i.n, who: (i.who || []).map((w) => str(w, 60, "who")).filter(Boolean).slice(0, 10) }))),
     skip_from_my_calendar: ({ numbers }) => imp.skip(numbers || []),
     add_import_rule: ({ decision, calendar, title_contains, note }) => imp.addRule({ decision, calendar, titleContains: str(title_contains, 80, "title_contains"), note }),

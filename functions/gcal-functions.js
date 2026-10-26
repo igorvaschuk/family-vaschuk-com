@@ -301,8 +301,8 @@ export const gcalImport = onSchedule(
     for (const account of await linkedAccounts()) {
       if (!canImport(account.scope)) continue;
       const { uid } = account;
-      const settings = await store.get(`users/${uid}/settings/gcalImport`);
-      if (!settings?.calendars?.length) continue;
+      // Members who allowed reading but never asked yet start with their main calendar.
+      const settings = (await store.get(`users/${uid}/settings/gcalImport`)) || {};
       const by = (await getAuth().getUser(uid).catch(() => null))?.displayName?.split(" ")[0] || account.email;
       const audit = (action, targetId, before, after) => store.add("auditLog", {
         action, targetId, before: before ?? null, after: after ?? null, by, byUid: uid, request: null, via: "gcal",

@@ -102,7 +102,9 @@ test("choose calendars, check, add with who, skip, rules, and following Google c
   let imp = make();
   assert.deepEqual((await imp.calendars()).map((c) => c.name), ["Igor", "Kids"]); // never its own calendar
   assert.deepEqual(await imp.chooseCalendars(["Kids", "primary@x"]), ["Kids", "Igor"]);
-  const waiting = await imp.check();
+  assert.deepEqual(store.data["users/u1/settings"][0].calendars.map((c) => c.name), ["Kids", "your main calendar"]);
+  const { waiting, lookingAt } = await imp.check();
+  assert.deepEqual(lookingAt, ["Kids", "your main calendar"]);
   assert.deepEqual(waiting.map((o) => [o.n, o.title, o.repeats]), [[1, "Standup", false], [2, "Piano", true], [3, "Dentist", false]]);
 
   await imp.add([{ n: 2, who: ["Masha"] }, { n: 3, who: ["Dima"] }]);
@@ -126,7 +128,7 @@ test("choose calendars, check, add with who, skip, rules, and following Google c
   const left = await imp.refreshOffers();
   assert.deepEqual(left.map((o) => o.title), ["Lunch with Sam"]);
   assert.ok(store.data.events.some((e) => e.title === "Swim meet" && e.allDay));
-  assert.match(digestText(left.map((o) => ({ n: o.n, title: o.title, when: o.when, calendar: o.calendarName }))), /^I found a new event in your Google Calendar:\n5\. Lunch with Sam — Fri Oct 30, 12 PM \(Igor\)/);
+  assert.match(digestText(left.map((o) => ({ n: o.n, title: o.title, when: o.when, calendar: o.calendarName }))), /^I found a new event in your Google Calendar:\n5\. Lunch with Sam — Fri Oct 30, 12 PM \(your main calendar\)/);
 
   // Google changes: piano moves to 5 PM, Nov 4 is cancelled, Nov 11 moved to Thursday; dentist deleted.
   const kids = google.events["kids@x"];
@@ -165,6 +167,7 @@ test("the private assistant brings events in: check, then add by number with who
   Object.assign(store, { recentMessages: async () => [], recentThread: async () => [] });
   const google = fakeCalendar({ "kids@x": [piano, pianoOn("2026-10-28"), pianoOn("2026-11-04")] });
   const steps = [
+    [["check_my_google_calendar", {}]],
     [["choose_import_calendars", { calendars: ["Kids"] }], ["check_my_google_calendar", {}]],
     [["add_from_my_calendar", { items: [{ n: 1, who: ["Masha"] }] }]],
   ];
@@ -181,8 +184,11 @@ test("the private assistant brings events in: check, then add by number with who
   });
   assert.ok(seen[0].tools.includes("check_my_google_calendar"));
   assert.match(seen[0].system, /BRINGING IGOR'S OWN EVENTS IN/);
-  const checked = JSON.parse(seen[1].last.content[1].content);
-  assert.deepEqual(checked.waiting.map((o) => [o.n, o.title, o.repeats]), [[1, "Piano", true]]);
+  // Nothing chosen: the first check looks at the main calendar (empty here) without asking.
+  const first = JSON.parse(seen[1].last.content[0].content);
+  assert.deepEqual([first.looked_at, first.count], [["your main calendar"], 0]);
+  const checked = JSON.parse(seen[2].last.content[1].content);
+  assert.deepEqual([checked.looked_at, checked.waiting.map((o) => [o.n, o.title, o.repeats])], [["Kids"], [[1, "Piano", true]]]);
   const id = familyIdFor("u1", "kids@x", "piano");
   assert.deepEqual(out.refs.events, [id]);
   assert.equal(store.data.events[0].who[0], "Masha");

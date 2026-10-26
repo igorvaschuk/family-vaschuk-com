@@ -1,7 +1,7 @@
 // Bringing members' own Google Calendar events into the family calendar.
 //
-// A member picks which of their calendars to look at; the assistant (in
-// their private thread) offers what's coming up there, a repeating series as
+// The assistant (in a member's private thread) looks at their main calendar,
+// or the calendars they picked instead, and offers what's coming up there, a repeating series as
 // one offer, and adds what they choose. Imported events stay linked: when the
 // owner moves or cancels one in Google, the family copy follows (follow()).
 // Answers can become rules ("always add Masha's appointments") applied to new
@@ -336,7 +336,11 @@ export function importer({ store, api, uid, by, now = familyNow(), audit = async
    */
   async function refreshOffers(days = WINDOW_DAYS) {
     const st = await load();
-    if (!st.settings.calendars.length) fail("no calendars chosen yet: ask which of their calendars to look at (my_google_calendars, then choose_import_calendars)");
+    if (!st.settings.calendars.length) {
+      // Nothing picked yet: start with their main calendar.
+      const main = (await (await cal()).listCalendars()).find((c) => c.primary) || fail("couldn't find their main Google calendar; ask which calendars to look at (my_google_calendars)");
+      await saveSettings({ calendars: [{ id: main.id, name: "your main calendar", primary: true }] });
+    }
     const w = window(days);
     const byKey = new Map(st.offers.map((o) => [o.id, o]));
     const fresh = [];
@@ -410,17 +414,18 @@ export function importer({ store, api, uid, by, now = familyNow(), audit = async
     async chooseCalendars(ids) {
       const all = await this.calendars();
       const picked = ids.map((id) => all.find((c) => c.id === id || c.name.toLowerCase() === String(id).toLowerCase()) || fail(`no calendar “${id}”; call my_google_calendars for the list`));
-      await saveSettings({ calendars: picked.map((c) => ({ id: c.id, name: c.name })) });
+      await saveSettings({ calendars: picked.map((c) => ({ id: c.id, name: c.primary ? "your main calendar" : c.name, ...(c.primary ? { primary: true } : {}) })) });
       return picked.map((c) => c.name);
     },
-    /** Offers waiting for an answer (after refreshing them), marked as asked. */
+    /** Offers waiting for an answer (after refreshing them), marked as asked; and where it looked. */
     async check(days) {
       const list = await refreshOffers(days);
       for (const o of list.filter((o) => o.status === "new")) {
         await store.update(offersColl, o.id, { status: "asked" });
         o.status = "asked";
       }
-      return list.map(brief);
+      const { settings } = await load();
+      return { waiting: list.map(brief), lookingAt: settings.calendars.map((c) => c.name) };
     },
     async add(items) {
       const out = [];
