@@ -164,12 +164,12 @@ $("hint-close").onclick = () => {
 };
 
 let toastTimer;
-function toast(text) {
+function toast(text, ms = 2200) {
   document.querySelector(".toast")?.remove();
   const t = h("div.toast", { role: "status" }, text);
   document.body.append(t);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.remove(), 2200);
+  toastTimer = setTimeout(() => t.remove(), ms);
 }
 
 onAuthStateChanged(auth, (user) => {
@@ -699,6 +699,10 @@ $("mode").onclick = () => {
 // Speech to text with the browser's own recognizer (Web Speech API: Chrome,
 // Edge, Safari; the button stays hidden where there is none). The words land
 // in the message box to check and fix; nothing is sent until Send is tapped.
+//
+// One phrase per tap: in continuous mode phone browsers report each partial
+// guess ("what's", "what's on", ...) as its own final result, which repeats
+// words. Without it the latest result always holds the whole phrase.
 
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let dictation = null;
@@ -713,33 +717,60 @@ function setListening(on) {
   else updateComposer();
 }
 
+const DICTATION_ERRORS = {
+  "not-allowed": "Microphone access is blocked. Allow it for this site (the icon next to the address), then try again.",
+  "service-not-allowed": "This browser doesn't allow speech recognition here. Try the keyboard's own dictation key.",
+  "audio-capture": "No microphone found, or another app is using it.",
+  "no-speech": "Didn't hear anything. Check that the right microphone is on and not muted.",
+  network: "The browser couldn't reach its speech recognition service. Check the connection and try again.",
+  "language-not-supported": "Speech recognition doesn't support this device's language.",
+};
+
 function startDictation() {
   const rec = new Recognition();
   rec.lang = navigator.language || "en-US";
   rec.interimResults = true;
-  rec.continuous = true;
+  rec.continuous = false;
+  rec.maxAlternatives = 1;
   // Speech is added after whatever is already typed.
   const typed = input.value.trim();
   rec.onresult = (e) => {
-    const said = [...e.results].map((r) => r[0].transcript.trim()).filter(Boolean).join(" ");
+    if (dictation !== rec) return;
+    const said = e.results[e.results.length - 1][0].transcript.trim();
     input.value = [typed, said].filter(Boolean).join(" ");
     updateComposer();
   };
   rec.onerror = (e) => {
-    if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Microphone access is blocked for this site");
-    else if (e.error === "no-speech") toast("Didn't hear anything");
-    else if (e.error !== "aborted") toast("Speech to text isn't working right now");
+    console.warn("dictation error:", e.error, e.message);
+    if (e.error !== "aborted") toast(DICTATION_ERRORS[e.error] || `Speech to text failed (${e.error}).`, 6000);
   };
   rec.onend = () => {
-    if (dictation === rec) dictation = null;
+    if (dictation !== rec) return;
+    dictation = null;
     setListening(false);
     input.focus();
   };
   dictation = rec;
-  rec.start();
+  try {
+    rec.start();
+  } catch (err) {
+    console.warn("dictation start failed:", err);
+    dictation = null;
+    toast(`Speech to text couldn't start (${err.name}).`, 6000);
+    return;
+  }
   setListening(true);
 }
+/** Stops listening; the phrase heard so far still arrives. */
 const stopDictation = () => dictation?.stop();
+/** Stops listening and drops anything still on its way (after Send). */
+function cancelDictation() {
+  const rec = dictation;
+  if (!rec) return;
+  dictation = null;
+  rec.abort();
+  setListening(false);
+}
 
 $("mic").onclick = () => (dictation ? stopDictation() : startDictation());
 addEventListener("hashchange", stopDictation);
@@ -747,7 +778,7 @@ document.addEventListener("visibilitychange", () => document.visibilityState ===
 
 $("compose").addEventListener("submit", async (e) => {
   e.preventDefault();
-  stopDictation();
+  cancelDictation();
   const text = input.value.trim();
   const user = auth.currentUser;
   if (!text || !user || text === "/") return;

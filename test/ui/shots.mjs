@@ -74,12 +74,14 @@ await page.goto("http://localhost:8123/#family");
 await page.waitForTimeout(300);
 await page.fill("#text", "Hi all,");
 await page.click("#mic");
-await page.evaluate(() => { window.__say("who is picking", false); window.__say("who is picking up Dima"); window.__say("from swim today", false); });
+await page.evaluate(() => { for (const s of ["who's", "who's picking", "who's picking up Dima", "who's picking up Dima from swim"]) window.__say(s); window.__say("who's picking up Dima from swim today", true); });
 await page.waitForTimeout(100);
 await page.screenshot({ path: `${out}/dictation.png` });
 console.log("dictation:", JSON.stringify(await page.inputValue("#text")), "| mic:", await page.getAttribute("#mic", "aria-pressed"));
 await page.click("#send");
+await page.evaluate(() => window.__say("late result after send", true)); // must not refill the box
 await page.waitForTimeout(200);
+console.log("box after send:", JSON.stringify(await page.inputValue("#text")));
 console.log("after send: mic", await page.getAttribute("#mic", "aria-pressed"), "| sent:", JSON.stringify(await page.evaluate(() => window.__store.messages.filter((m) => /Hi all/.test(m.text)).map((m) => m.text + " [" + (m.channel || "family") + "]"))));
 console.log("errors:", JSON.stringify(errors));
 await browser.close();

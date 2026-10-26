@@ -75,19 +75,21 @@ export async function addDoc(ref, data) {
 }
 export const setDoc = async () => {};
 export const deleteDoc = async () => {};
-// Speech recognition: window.__say("words", isFinal) plays a result into the
-// running recognizer; window.__mics counts starts.
+// Speech recognition: window.__say("words so far", isFinal) plays a result
+// into the running recognizer the way phone Chrome does, where every partial
+// guess arrives as another result holding the whole phrase so far.
+// window.__mics counts starts.
 window.SpeechRecognition = window.webkitSpeechRecognition = class {
   start() {
     window.__mics = (window.__mics || 0) + 1;
     const results = [];
-    window.__say = (text, final = true) => {
-      if (results.length && !results.at(-1).isFinal) results.pop();
+    window.__say = (text, final = false) => {
       results.push(Object.assign([{ transcript: text }], { isFinal: final }));
-      this.onresult?.({ results });
+      this.onresult?.({ results, resultIndex: results.length - 1 });
     };
   }
   stop() { setTimeout(() => this.onend?.(), 0); }
+  abort() { setTimeout(() => this.onend?.(), 0); }
 };
 // messaging
 export const isSupported = async () => false;
