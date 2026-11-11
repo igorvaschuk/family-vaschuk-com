@@ -879,9 +879,7 @@ function renderCalendar() {
   const bar = h("div.calbar", {},
     h("div.row", {},
       h("button.btn", { type: "button", "aria-label": "Previous " + unit, onclick: prev }, "‹"),
-      // The title doubles as the way back: tapping it returns to this month / week.
-      h("h3", {}, isCurrent ? [label].flat()
-        : h("button.calnow", { type: "button", title: "Back to this " + unit, onclick: current }, ...[label].flat())),
+      h("h3", {}, ...[label].flat()),
       h("button.btn", { type: "button", "aria-label": "Next " + unit, onclick: next }, "›"),
       h("div.calview", { role: "group", "aria-label": "Calendar view" },
         h("a.btn", { href: "#calendar/month", "aria-pressed": String(month) }, "Month"),
@@ -889,7 +887,9 @@ function renderCalendar() {
     h("div.row.wrap", {},
       people.length > 1 && h("button.btn", { type: "button", "aria-pressed": String(!state.who), onclick: () => { state.who = null; rerender(); } }, "All"),
       ...(people.length > 1 ? people : []).map((p) => h("button.btn", { type: "button", "aria-pressed": String(state.who === p), onclick: () => { state.who = p; rerender(); } }, h("span.chip", { style: `--c:${colorFor(p)}` }, p))),
-      h("button.btn.primary", { type: "button", onclick: () => fill("Add ") }, "✨ Add")),
+      h("button.btn.primary", { type: "button", onclick: () => fill("Add ") }, "✨ Add"),
+      // Only once you've moved to another month / week: the way back.
+      !isCurrent && h("button.btn.calnow", { type: "button", onclick: current }, "This " + unit)),
   );
   const empty = !state.events.length && h("div.empty", {},
     "The family calendar is empty.", h("br"),
