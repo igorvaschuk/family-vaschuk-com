@@ -21,7 +21,7 @@ import {
 } from "./recurrence.js";
 // Production or dev project, picked by where the page is hosted.
 import { firebaseConfig, VAPID_KEY } from "./config.js";
-import { splitLinks } from "./links.js";
+import { linksIn, stripLinks } from "./links.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -371,17 +371,10 @@ function nextAt(placeId) {
     .find((o) => o.allDay ? o.date >= now.date : o.start >= now.dateTime) || null;
 }
 
-// Web addresses in event text (often a meeting link from an imported Google
-// event) show as a short tappable "🔗 Join" link (js/links.js).
-const webLink = ({ url }) => h("a.weblink", { href: url, target: "_blank", rel: "noopener noreferrer", title: url }, "🔗 Join");
-const linkify = (text) => splitLinks(text).map((x) => (typeof x === "string" ? x : webLink(x)));
-/** A location that isn't a mapped place: a meeting link, or an address not on the map. */
-function locationLine(loc) {
-  const parts = splitLinks(loc);
-  if (parts.length === 1 && typeof parts[0] !== "string") return h("div.when", {}, webLink(parts[0]));
-  if (parts.some((x) => typeof x !== "string")) return h("div.when", {}, "📍 ", ...linkify(loc));
-  return h("div.when", {}, "📍 " + loc + " (not on map)");
-}
+// Web addresses in an event's location or notes (often a meeting link from an
+// imported Google event) become "🔗 Join" buttons next to Navigate; the text
+// keeps the rest (js/links.js).
+const joinButton = (url, i) => h("a.btn.go", { href: url, target: "_blank", rel: "noopener noreferrer", title: url }, i ? `🔗 Join ${i + 1}` : "🔗 Join");
 
 /** Card for an event; with `occ` it shows that date, else the next one / its rule. */
 function eventCard(ev, occ) {
@@ -395,16 +388,22 @@ function eventCard(ev, occ) {
   const color = colorFor(ev.who?.[0] || ev.title);
   const when = occ ? `${dayFmt(occ.date)} · ${timeRange(occ)}` : "No upcoming dates";
   const leave = occ && !occ.allDay && occ.date >= now.date ? leaveBy(ev, timeOf(occ.start)) : "";
+  const links = linksIn(p ? null : ev.location, ev.notes);
+  const loc = !p && ev.location ? stripLinks(ev.location) : "";
+  const notes = ev.notes ? stripLinks(ev.notes) : "";
+  // Join buttons first, then Navigate / Call / Share for a mapped place.
+  const buttons = p ? placeButtons(p, { mapLink: false }) : links.length ? h("div.row") : null;
+  buttons?.prepend(...links.map(joinButton));
   return h("div.ev", { style: `--c:${color}` },
     h("div.bar"),
     h("div.body", {},
       h("div.row", {}, h("span.title", {}, ev.title), ...(ev.who || []).map((w) => h("span.chip", { style: `--c:${colorFor(w)}` }, w))),
       h("div.when", {}, when, ev.recurrence ? ` · ${describeRecurrence(ev.recurrence)}` : ""),
       p ? h("button.placelink", { type: "button", onclick: () => go("map/" + p.id) }, "📍 " + p.name)
-        : ev.location ? locationLine(ev.location) : null,
+        : loc && h("div.when", {}, "📍 " + loc + (links.length ? "" : " (not on map)")),
       leave && h("div.when", {}, leave),
-      ev.notes && h("div.notes", {}, ...linkify(ev.notes)),
-      p && placeButtons(p, { mapLink: false }),
+      notes && h("div.notes", {}, notes),
+      buttons,
     ),
   );
 }
