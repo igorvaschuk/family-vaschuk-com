@@ -370,6 +370,33 @@ function nextAt(placeId) {
     .find((o) => o.allDay ? o.date >= now.date : o.start >= now.dateTime) || null;
 }
 
+// Web addresses in event text (often a meeting link from an imported Google
+// event) show as a short tappable link instead of the full address.
+const URL_RE = /https?:\/\/[^\s<>"'()]+/g;
+const linkHost = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; } };
+function webLink(url, label) {
+  return h("a.weblink", { href: url, target: "_blank", rel: "noopener noreferrer", title: url }, label);
+}
+/** Text with each http(s) address replaced by "🔗 link (host)". */
+function linkify(text) {
+  const out = [];
+  let at = 0;
+  for (const m of String(text).matchAll(URL_RE)) {
+    const url = m[0].replace(/[.,;:!?]+$/, ""); // a sentence's full stop isn't part of the link
+    out.push(text.slice(at, m.index), webLink(url, `🔗 link (${linkHost(url) || "open"})`));
+    at = m.index + url.length;
+  }
+  out.push(text.slice(at));
+  return out.filter((x) => x !== "");
+}
+/** A location that isn't a mapped place: a meeting link, or an address not on the map. */
+function locationLine(loc) {
+  const only = String(loc).trim().match(/^https?:\/\/\S+$/);
+  if (only) return h("div.when", {}, webLink(only[0], "🔗 Join link"), ` · ${linkHost(only[0])}`);
+  if (/https?:\/\//.test(loc)) return h("div.when", {}, "📍 ", ...linkify(loc));
+  return h("div.when", {}, "📍 " + loc + " (not on map)");
+}
+
 /** Card for an event; with `occ` it shows that date, else the next one / its rule. */
 function eventCard(ev, occ) {
   const now = familyNow();
@@ -388,9 +415,9 @@ function eventCard(ev, occ) {
       h("div.row", {}, h("span.title", {}, ev.title), ...(ev.who || []).map((w) => h("span.chip", { style: `--c:${colorFor(w)}` }, w))),
       h("div.when", {}, when, ev.recurrence ? ` · ${describeRecurrence(ev.recurrence)}` : ""),
       p ? h("button.placelink", { type: "button", onclick: () => go("map/" + p.id) }, "📍 " + p.name)
-        : ev.location ? h("div.when", {}, "📍 " + ev.location + " (not on map)") : null,
+        : ev.location ? locationLine(ev.location) : null,
       leave && h("div.when", {}, leave),
-      ev.notes && h("div.notes", {}, ev.notes),
+      ev.notes && h("div.notes", {}, ...linkify(ev.notes)),
       p && placeButtons(p, { mapLink: false }),
     ),
   );
