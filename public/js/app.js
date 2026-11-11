@@ -851,7 +851,9 @@ function renderCalendar() {
 
   let label, prev, next, current, isCurrent;
   if (month) {
-    label = dayFmt(state.month, { month: "long", year: "numeric" });
+    // "September 2026" on wide screens, "Sep 2026" on phones (CSS picks one).
+    label = [h("span.long", {}, dayFmt(state.month, { month: "long", year: "numeric" })),
+      h("span.short", {}, dayFmt(state.month, { month: "short", year: "numeric" }))];
     prev = () => { state.month = addMonths(state.month, -1); rerender(); };
     next = () => { state.month = addMonths(state.month, 1); rerender(); };
     current = () => { state.month = now.date.slice(0, 8) + "01"; rerender(); };
@@ -869,16 +871,16 @@ function renderCalendar() {
   const bar = h("div.calbar", {},
     h("div.row", {},
       h("button.btn", { type: "button", "aria-label": "Previous " + unit, onclick: prev }, "‹"),
-      h("h3", {}, label),
-      h("button.btn", { type: "button", "aria-label": "Next " + unit, onclick: next }, "›")),
+      h("h3", {}, ...[label].flat()),
+      h("button.btn", { type: "button", "aria-label": "Next " + unit, onclick: next }, "›"),
+      h("div.calview", { role: "group", "aria-label": "Calendar view" },
+        h("a.btn", { href: "#calendar/month", "aria-pressed": String(month) }, "Month"),
+        h("a.btn", { href: "#calendar/week", "aria-pressed": String(!month) }, "Week"))),
     h("div.row.wrap", {},
       h("button.btn", { type: "button", "aria-pressed": String(isCurrent), onclick: current }, "This " + unit),
       people.length > 1 && h("button.btn", { type: "button", "aria-pressed": String(!state.who), onclick: () => { state.who = null; rerender(); } }, "Everyone"),
       ...(people.length > 1 ? people : []).map((p) => h("button.btn", { type: "button", "aria-pressed": String(state.who === p), onclick: () => { state.who = p; rerender(); } }, h("span.chip", { style: `--c:${colorFor(p)}` }, p))),
       h("button.btn.primary", { type: "button", onclick: () => fill("Add ") }, "✨ Add")),
-    h("div.calview", { role: "group", "aria-label": "Calendar view" },
-      h("a.btn", { href: "#calendar/month", "aria-pressed": String(month) }, "🗓️ Month"),
-      h("a.btn", { href: "#calendar/week", "aria-pressed": String(!month) }, "📋 Week")),
   );
   const empty = !state.events.length && h("div.empty", {},
     "The family calendar is empty.", h("br"),

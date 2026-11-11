@@ -345,8 +345,21 @@
     .day { scroll-margin-top: 8px; }
     .day.focus { background: color-mix(in srgb, var(--accent) 8%, transparent); }
     .day.focus h4 { color: var(--ink); }
-    .calview { display: flex; gap: 6px; }
-    .calview .btn { flex: 1; max-width: 160px; justify-content: center; text-decoration: none; }
+    .calbar .row:first-child { gap: 6px; }
+    .calbar h3 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .calbar h3 .short { display: none; }
+    @media (max-width: 480px) {
+      .calbar h3 .long { display: none; }
+      .calbar h3 .short { display: inline; }
+    }
+    @media (max-width: 360px) {
+      .calbar h3 { font-size: 17px; }
+      .calview .btn { padding-left: 9px; padding-right: 9px; }
+    }
+    /* Month / Week: one segmented control at the end of the title row */
+    .calview { display: flex; flex: none; margin-left: 4px; }
+    .calview .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+    .calview .btn:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
 
     /* Month grid */
     .month { padding: 10px 12px 24px; }
