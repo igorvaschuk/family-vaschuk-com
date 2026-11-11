@@ -19,10 +19,10 @@ test("family wall clock to UTC across daylight saving", () => {
 });
 
 test("weekly timed event: RRULE with local-day UNTIL, EXDATE at the event's time", () => {
-  const ev = { id: "e1", title: "Ballet", who: ["Maria"], start: "2026-10-27T18:30", end: "2026-10-27T20:00", allDay: false, placeId: "pbs", recurrence: { freq: "weekly", byDay: ["TU", "TH"], until: "2026-12-17" }, exdates: ["2026-11-26"], notes: "Bring slippers" };
+  const ev = { id: "e1", title: "Ballet", who: ["Valerie"], start: "2026-10-27T18:30", end: "2026-10-27T20:00", allDay: false, placeId: "pbs", recurrence: { freq: "weekly", byDay: ["TU", "TH"], until: "2026-12-17" }, exdates: ["2026-11-26"], notes: "Bring slippers" };
   const g = toGoogleEvent(ev, { name: "Princeton Ballet School", address: "301 N Harrison St" }, { appUrl });
   assert.equal(g.id, googleId("e1"));
-  assert.equal(g.summary, "Ballet (Maria)");
+  assert.equal(g.summary, "Ballet (Valerie)");
   assert.equal(g.location, "Princeton Ballet School, 301 N Harrison St");
   assert.deepEqual(g.start, { dateTime: "2026-10-27T18:30:00", timeZone: "America/New_York" });
   assert.deepEqual(g.end, { dateTime: "2026-10-27T20:00:00", timeZone: "America/New_York" });

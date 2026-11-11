@@ -588,7 +588,7 @@ function emptyFamily() {
 function emptyAssistant() {
   const ideas = [
     "What's on this week?",
-    "Add Maria's ballet Tue/Thu 6:30–8 PM",
+    "Add Valerie's ballet Tue/Thu 6:30–8 PM",
     "Our home address is …",
     "Navigate to ballet",
     "What do you remember?",
@@ -884,7 +884,7 @@ function renderCalendar() {
   );
   const empty = !state.events.length && h("div.empty", {},
     "The family calendar is empty.", h("br"),
-    h("button.btn.primary", { type: "button", style: "margin-top:12px", onclick: () => fill("Add Maria's ballet Tue/Thu 6:30–8 PM") }, "✨ Add an activity with the assistant"));
+    h("button.btn.primary", { type: "button", style: "margin-top:12px", onclick: () => fill("Add Valerie's ballet Tue/Thu 6:30–8 PM") }, "✨ Add an activity with the assistant"));
   view.replaceChildren(bar, empty || (month ? monthGrid(events, now) : weekList(events, now)));
 }
 
@@ -1069,7 +1069,7 @@ function renderMemory() {
       ? h("ul", {}, ...state.memory.map((m) => h("li", {},
         h("div", {}, m.fact),
         h("div.sub", {}, [m.subject && `about ${m.subject}`, `from ${m.saidBy || m.createdBy || "?"}`, stampText(m.createdAt), m.updatedBy && `updated by ${m.updatedBy}`].filter(Boolean).join(" · ")))))
-      : h("p.lead", {}, "Nothing yet. Tell the assistant things like “Maria is 8 and does ballet” and they'll show up here."),
+      : h("p.lead", {}, "Nothing yet. Tell the assistant things like “Valerie does ballet on Tuesdays” and they'll show up here."),
     state.myMemory.length > 0 && h("h3", {}, "🔒 Only you can see"),
     state.myMemory.length > 0 && h("p.lead", {}, "Remembered from your private conversation with the assistant. Ask it there to change or forget any of these."),
     state.myMemory.length > 0 && h("ul", {}, ...state.myMemory.map((m) => h("li", {},
