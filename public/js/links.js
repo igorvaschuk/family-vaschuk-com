@@ -1,5 +1,5 @@
 // Web addresses in event text (often a meeting link from an imported Google
-// event) show as a "🔗 Join" button instead of the whole address.
+// event) show as a "Join" button instead of the whole address.
 
 /** http(s) addresses inside free text. */
 export const URL_RE = /https?:\/\/[^\s<>"'()]+/g;

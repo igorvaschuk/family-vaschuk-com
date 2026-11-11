@@ -372,9 +372,9 @@ function nextAt(placeId) {
 }
 
 // Web addresses in an event's location or notes (often a meeting link from an
-// imported Google event) become "🔗 Join" buttons next to Navigate; the text
+// imported Google event) become "Join" buttons next to Navigate; the text
 // keeps the rest (js/links.js).
-const joinButton = (url, i) => h("a.btn.go", { href: url, target: "_blank", rel: "noopener noreferrer", title: url }, i ? `🔗 Join ${i + 1}` : "🔗 Join");
+const joinButton = (url, i) => h("a.btn.go", { href: url, target: "_blank", rel: "noopener noreferrer", title: url }, i ? `Join ${i + 1}` : "Join");
 
 /** Card for an event; with `occ` it shows that date, else the next one / its rule. */
 function eventCard(ev, occ) {
