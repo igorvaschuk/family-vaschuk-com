@@ -372,8 +372,8 @@ function nextAt(placeId) {
 }
 
 // Web addresses in event text (often a meeting link from an imported Google
-// event) show as a short tappable "🔗 site · what it is" link (js/links.js).
-const webLink = ({ url, label }) => h("a.weblink", { href: url, target: "_blank", rel: "noopener noreferrer", title: url }, "🔗 " + label);
+// event) show as a short tappable "🔗 Join" link (js/links.js).
+const webLink = ({ url }) => h("a.weblink", { href: url, target: "_blank", rel: "noopener noreferrer", title: url }, "🔗 Join");
 const linkify = (text) => splitLinks(text).map((x) => (typeof x === "string" ? x : webLink(x)));
 /** A location that isn't a mapped place: a meeting link, or an address not on the map. */
 function locationLine(loc) {
