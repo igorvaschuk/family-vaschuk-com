@@ -839,11 +839,19 @@ $("compose").addEventListener("submit", async (e) => {
 
 /* --------------------------------------------------------------- calendar */
 
+// The calendar's person filters list these first, in this order; anyone else
+// on an event follows alphabetically.
+const FAMILY_ORDER = ["Valerie", "Dima"];
+function byFamilyOrder(a, b) {
+  const i = FAMILY_ORDER.indexOf(a), j = FAMILY_ORDER.indexOf(b);
+  return (i < 0 ? Infinity : i) - (j < 0 ? Infinity : j) || a.localeCompare(b);
+}
+
 function renderCalendar() {
   const view = $("view-calendar");
   if (view.hidden) return;
   const now = familyNow();
-  const people = [...new Set(state.events.flatMap((e) => e.who || []))].sort();
+  const people = [...new Set(state.events.flatMap((e) => e.who || []))].sort(byFamilyOrder);
   if (state.who && !people.includes(state.who)) state.who = null;
   const events = state.who ? state.events.filter((e) => (e.who || []).includes(state.who)) : state.events;
   const month = state.calView === "month";
