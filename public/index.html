@@ -348,6 +348,8 @@
     .calbar .row:first-child { gap: 6px; }
     .calbar h3 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .calbar h3 .short { display: none; }
+    .calnow { font: inherit; color: inherit; background: none; border: 0; padding: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .calnow::after { content: " ↺"; font-size: .75em; color: var(--accent); }
     @media (max-width: 480px) {
       .calbar h3 .long { display: none; }
       .calbar h3 .short { display: inline; }
