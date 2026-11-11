@@ -191,7 +191,8 @@
     .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
     .tab .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
     @media (max-width: 480px) { .tab { flex-direction: column; gap: 0; font-size: 12px; padding: 6px 4px 7px; } .tab .ico { font-size: 19px; line-height: 1.2; } }
-    .view { flex: 1; min-height: 0; overflow-y: auto; }
+    /* Panels only scroll up and down; nothing inside may make them pan sideways. */
+    .view { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
     .pad { padding: 16px; }
 
     /* Messages */
@@ -316,7 +317,7 @@
       padding: 10px 12px;
     }
     .ev .bar { width: 4px; border-radius: 4px; background: var(--c, var(--accent)); flex: none; }
-    .ev .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .ev .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
     .ev .title { font-weight: 700; }
     .ev .when { font-size: 14px; color: var(--muted); }
     .ev .notes { font-size: 14px; color: var(--muted); white-space: pre-wrap; }
