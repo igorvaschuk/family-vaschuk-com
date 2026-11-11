@@ -24,7 +24,7 @@ await page.clock.setFixedTime(new Date("2026-10-25T20:15:00Z"));
   console.log("privacy link:", await out2.getAttribute("footer a", "href"));
   await out2.close();
 }
-for (const tab of ["family", "assistant", "assistant/me", "calendar", "map", "memory"]) {
+for (const tab of ["family", "assistant", "assistant/me", "calendar", "calendar/week", "map", "memory"]) {
   await page.goto("http://localhost:8123/#" + tab);
   await page.waitForTimeout(tab === "map" ? 2500 : 500);
   await page.screenshot({ path: `${out}/${tab.replace("/", "-")}.png` });
@@ -88,6 +88,19 @@ await page.goto("http://localhost:8123/#map/pbs");
 await page.waitForTimeout(1500);
 await page.screenshot({ path: `${out}/map-focus.png` });
 await page.goto("http://localhost:8123/#calendar");
+await page.waitForTimeout(300);
+// Month grid: tapping a busy day opens that day's week, with the day highlighted.
+await page.goto("http://localhost:8123/#calendar/month");
+await page.waitForTimeout(300);
+console.log("month:", await page.textContent(".calbar h3"), "| busy days:", await page.locator(".mday.busy:not(.out)").count());
+await page.click('.mday[aria-label^="Saturday, October 31"]');
+await page.waitForTimeout(300);
+console.log("day tap went to:", await page.evaluate(() => location.hash), "| week:", await page.textContent(".calbar h3"), "| focused:", await page.textContent(".day.focus h4"));
+await page.screenshot({ path: `${out}/calendar-day.png` });
+await page.goBack();
+await page.waitForTimeout(300);
+console.log("back to:", await page.evaluate(() => location.hash), "| month grid shown:", await page.locator(".mgrid").count());
+await page.goto("http://localhost:8123/#calendar/week");
 await page.waitForTimeout(300);
 console.log("calendar next-week check:", await page.evaluate(() => document.querySelector(".calbar h3").textContent));
 await page.screenshot({ path: `${out}/calendar-full.png`, fullPage: false });

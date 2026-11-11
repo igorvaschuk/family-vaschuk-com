@@ -6,6 +6,8 @@ The Vaschuk family site: a private family chat with a family assistant, a shared
 
 Tabs: **Family** (chat), **Assistant**, **Calendar**, **Map**, **Memory**.
 
+- **Calendar** has two views, switched next to the month name: **Month** (a grid; busy days are tinted with a dot per event in each person's color) and **Week** (the day-by-day list with full event details). Tapping a day in the month opens its week at that day (`#calendar/2026-11-14`), and Back returns to the month. Tapping the month name (or week) when you've moved away goes back to the current one. The calendar reopens on the view used last.
+
 - In the Family chat, a message starting with `/` goes to the assistant (`/what's on tomorrow?`); everything else is just chat. The ✨ button next to the message box switches to the Assistant tab (and 💬 back), carrying the draft along.
 - In the Assistant tab no slash is needed. Every request and reply, from either place, is listed there. Calendar changes made from the Assistant tab are announced in the family chat.
 - **🎤 Speak instead of typing** (family chat and assistant): tap the mic, talk, tap ■ (or Send). The words go into the message box to check first; nothing is sent by itself. It uses the browser's built-in speech recognition (Chrome, Edge, Safari; Chrome and Edge send the audio to Google/Microsoft to transcribe), so the button doesn't show in browsers without it, such as Firefox.

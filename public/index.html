@@ -342,6 +342,58 @@
     .day h4 { margin: 0; font-size: 15px; color: var(--muted); }
     .day.today h4 { color: var(--accent); }
     .day .none { font-size: 14px; color: var(--muted); margin: -4px 0 0; }
+    .day { scroll-margin-top: 8px; }
+    .day.focus { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .day.focus h4 { color: var(--ink); }
+    .calbar .row:first-child { gap: 6px; }
+    .calbar h3 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .calbar h3 .short { display: none; }
+    .calnow { font: inherit; color: inherit; background: none; border: 0; padding: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .calnow::after { content: " ↺"; font-size: .75em; color: var(--accent); }
+    @media (max-width: 480px) {
+      .calbar h3 .long { display: none; }
+      .calbar h3 .short { display: inline; }
+    }
+    @media (max-width: 360px) {
+      .calbar h3 { font-size: 17px; }
+      .calview .btn { padding-left: 9px; padding-right: 9px; }
+    }
+    /* Month / Week: one segmented control at the end of the title row */
+    .calview { display: flex; flex: none; margin-left: 4px; }
+    .calview .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+    .calview .btn:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
+
+    /* Month grid */
+    .month { padding: 10px 12px 24px; }
+    .mgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+    .wd { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding-bottom: 2px; }
+    .mday {
+      min-height: 64px;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 3px;
+      padding: 5px 5px 4px;
+      border: 1px solid var(--edge);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--ink);
+      text-align: left;
+      overflow: hidden;
+    }
+    .mday:hover { border-color: var(--accent); }
+    .mday.out { background: transparent; color: var(--muted); opacity: .6; }
+    .mday.busy:not(.out) { background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
+    .mday .num { font-size: 14px; font-weight: 700; line-height: 1.2; }
+    .mday.today .num { background: var(--accent); color: #fff; border-radius: 999px; padding: 0 6px; margin-left: -2px; }
+    .mday.today { border-color: var(--accent); }
+    .mday .dots { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+    .mday .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--accent)); }
+    .mday .more { font-size: 11px; font-weight: 700; color: var(--muted); line-height: 1; }
+    .mday .peek { display: none; font-size: 12px; line-height: 1.2; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    @media (min-width: 640px) { .mday { min-height: 84px; } .mday .peek { display: block; } }
+    .mnote { font-size: 14px; color: var(--muted); margin: 12px 4px 0; }
 
     /* Map */
     #view-map { display: flex; flex-direction: column; }
