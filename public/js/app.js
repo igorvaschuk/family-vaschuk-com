@@ -21,6 +21,7 @@ import {
 } from "./recurrence.js";
 // Production or dev project, picked by where the page is hosted.
 import { firebaseConfig, VAPID_KEY } from "./config.js";
+import { splitLinks } from "./links.js";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -371,29 +372,14 @@ function nextAt(placeId) {
 }
 
 // Web addresses in event text (often a meeting link from an imported Google
-// event) show as a short tappable link instead of the full address.
-const URL_RE = /https?:\/\/[^\s<>"'()]+/g;
-const linkHost = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; } };
-function webLink(url, label) {
-  return h("a.weblink", { href: url, target: "_blank", rel: "noopener noreferrer", title: url }, label);
-}
-/** Text with each http(s) address replaced by "🔗 link (host)". */
-function linkify(text) {
-  const out = [];
-  let at = 0;
-  for (const m of String(text).matchAll(URL_RE)) {
-    const url = m[0].replace(/[.,;:!?]+$/, ""); // a sentence's full stop isn't part of the link
-    out.push(text.slice(at, m.index), webLink(url, `🔗 link (${linkHost(url) || "open"})`));
-    at = m.index + url.length;
-  }
-  out.push(text.slice(at));
-  return out.filter((x) => x !== "");
-}
+// event) show as a short tappable "🔗 site · what it is" link (js/links.js).
+const webLink = ({ url, label }) => h("a.weblink", { href: url, target: "_blank", rel: "noopener noreferrer", title: url }, "🔗 " + label);
+const linkify = (text) => splitLinks(text).map((x) => (typeof x === "string" ? x : webLink(x)));
 /** A location that isn't a mapped place: a meeting link, or an address not on the map. */
 function locationLine(loc) {
-  const only = String(loc).trim().match(/^https?:\/\/\S+$/);
-  if (only) return h("div.when", {}, webLink(only[0], "🔗 Join link"), ` · ${linkHost(only[0])}`);
-  if (/https?:\/\//.test(loc)) return h("div.when", {}, "📍 ", ...linkify(loc));
+  const parts = splitLinks(loc);
+  if (parts.length === 1 && typeof parts[0] !== "string") return h("div.when", {}, webLink(parts[0]));
+  if (parts.some((x) => typeof x !== "string")) return h("div.when", {}, "📍 ", ...linkify(loc));
   return h("div.when", {}, "📍 " + loc + " (not on map)");
 }
 
