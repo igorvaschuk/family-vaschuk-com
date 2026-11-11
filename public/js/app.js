@@ -67,6 +67,9 @@ const state = {
   scope: "family", // assistant tab: "family" or "me" (private thread)
   week: sundayOf(familyNow().date),
   who: null, // calendar filter
+  calView: "month", // calendar sub-tab: "month" grid or "week" list
+  month: familyNow().date.slice(0, 8) + "01", // first day of the month shown
+  focusDay: null, // day to scroll to in the week list (from a tap in the month grid)
   focusPlace: null,
 };
 function sundayOf(ymd) { return addDays(ymd, -new Date(ymd + "T12:00:00Z").getUTCDay()); }
@@ -222,7 +225,8 @@ onAuthStateChanged(auth, (user) => {
 });
 
 /* ---------------------------------------------------------------- routing */
-// #family #assistant #assistant/me #calendar #map #map/<placeId> #memory #export
+// #family #assistant #assistant/me #calendar #calendar/month #calendar/week
+// #calendar/<YYYY-MM-DD> (that day's week) #map #map/<placeId> #memory #export
 
 const TABS = ["family", "assistant", "calendar", "map", "memory"];
 function route() {
@@ -252,12 +256,30 @@ function route() {
     requestAnimationFrame(() => (box.scrollTop = box.scrollHeight));
     clearNotifications().catch(console.error);
   }
-  if (state.tab === "calendar") renderCalendar();
+  if (state.tab === "calendar") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(arg || "")) {
+      state.calView = "week";
+      state.week = sundayOf(arg);
+      state.month = arg.slice(0, 8) + "01";
+      state.focusDay = arg;
+    } else {
+      state.calView = arg === "week" || arg === "month" ? arg : calendarView();
+      state.focusDay = null;
+    }
+    try { localStorage.setItem("calendar-view", state.calView); } catch {}
+    renderCalendar();
+    if (state.focusDay) requestAnimationFrame(scrollToFocusDay);
+  }
   if (state.tab === "map") renderMap();
   if (state.tab === "memory") renderMemory();
 }
 addEventListener("hashchange", route);
-document.querySelectorAll(".tab").forEach((b) => (b.onclick = () => go(b.dataset.tab === "assistant" ? assistantHash() : b.dataset.tab)));
+document.querySelectorAll(".tab").forEach((b) => (b.onclick = () => go(b.dataset.tab === "assistant" ? assistantHash() : b.dataset.tab === "calendar" ? "calendar/" + calendarView() : b.dataset.tab)));
+/** The calendar opens on the sub-tab (month or week) used last; month the first time. */
+function calendarView() {
+  try { if (localStorage.getItem("calendar-view") === "week") return "week"; } catch {}
+  return "month";
+}
 /** The assistant tab opens on whichever conversation (family or private) was used last. */
 function assistantHash() {
   try { if (localStorage.getItem("assistant-scope") === "me") return "assistant/me"; } catch {}
@@ -821,36 +843,112 @@ function renderCalendar() {
   const view = $("view-calendar");
   if (view.hidden) return;
   const now = familyNow();
-  const from = state.week, to = addDays(from, 6);
   const people = [...new Set(state.events.flatMap((e) => e.who || []))].sort();
   if (state.who && !people.includes(state.who)) state.who = null;
   const events = state.who ? state.events.filter((e) => (e.who || []).includes(state.who)) : state.events;
-  const occ = agenda(events, from, to);
-  const label = `${dayFmt(from, { month: "short", day: "numeric" })} – ${dayFmt(to, from.slice(5, 7) === to.slice(5, 7) ? { day: "numeric" } : { month: "short", day: "numeric" })}`;
+  const month = state.calView === "month";
+  const rerender = () => renderCalendar();
+
+  let label, prev, next, current, isCurrent;
+  if (month) {
+    label = dayFmt(state.month, { month: "long", year: "numeric" });
+    prev = () => { state.month = addMonths(state.month, -1); rerender(); };
+    next = () => { state.month = addMonths(state.month, 1); rerender(); };
+    current = () => { state.month = now.date.slice(0, 8) + "01"; rerender(); };
+    isCurrent = state.month === now.date.slice(0, 8) + "01";
+  } else {
+    const from = state.week, to = addDays(from, 6);
+    label = `${dayFmt(from, { month: "short", day: "numeric" })} – ${dayFmt(to, from.slice(5, 7) === to.slice(5, 7) ? { day: "numeric" } : { month: "short", day: "numeric" })}`;
+    prev = () => { state.week = addDays(state.week, -7); state.focusDay = null; rerender(); };
+    next = () => { state.week = addDays(state.week, 7); state.focusDay = null; rerender(); };
+    current = () => { state.week = sundayOf(now.date); state.focusDay = null; rerender(); };
+    isCurrent = state.week === sundayOf(now.date);
+  }
+  const unit = month ? "month" : "week";
 
   const bar = h("div.calbar", {},
     h("div.row", {},
-      h("button.btn", { type: "button", "aria-label": "Previous week", onclick: () => { state.week = addDays(state.week, -7); renderCalendar(); } }, "‹"),
+      h("button.btn", { type: "button", "aria-label": "Previous " + unit, onclick: prev }, "‹"),
       h("h3", {}, label),
-      h("button.btn", { type: "button", "aria-label": "Next week", onclick: () => { state.week = addDays(state.week, 7); renderCalendar(); } }, "›")),
+      h("button.btn", { type: "button", "aria-label": "Next " + unit, onclick: next }, "›")),
     h("div.row.wrap", {},
-      h("button.btn", { type: "button", "aria-pressed": String(state.week === sundayOf(now.date)), onclick: () => { state.week = sundayOf(now.date); renderCalendar(); } }, "This week"),
-      people.length > 1 && h("button.btn", { type: "button", "aria-pressed": String(!state.who), onclick: () => { state.who = null; renderCalendar(); } }, "Everyone"),
-      ...(people.length > 1 ? people : []).map((p) => h("button.btn", { type: "button", "aria-pressed": String(state.who === p), onclick: () => { state.who = p; renderCalendar(); } }, h("span.chip", { style: `--c:${colorFor(p)}` }, p))),
+      h("button.btn", { type: "button", "aria-pressed": String(isCurrent), onclick: current }, "This " + unit),
+      people.length > 1 && h("button.btn", { type: "button", "aria-pressed": String(!state.who), onclick: () => { state.who = null; rerender(); } }, "Everyone"),
+      ...(people.length > 1 ? people : []).map((p) => h("button.btn", { type: "button", "aria-pressed": String(state.who === p), onclick: () => { state.who = p; rerender(); } }, h("span.chip", { style: `--c:${colorFor(p)}` }, p))),
       h("button.btn.primary", { type: "button", onclick: () => fill("Add ") }, "✨ Add")),
+    h("div.calview", { role: "group", "aria-label": "Calendar view" },
+      h("a.btn", { href: "#calendar/month", "aria-pressed": String(month) }, "🗓️ Month"),
+      h("a.btn", { href: "#calendar/week", "aria-pressed": String(!month) }, "📋 Week")),
   );
-  const days = [];
-  for (let i = 0; i < 7; i++) {
-    const d = addDays(from, i);
-    const list = occ.filter((o) => o.date === d || (o.allDay && o.date < d && o.end >= d));
-    days.push(h("section.day" + (d === now.date ? ".today" : ""), {},
-      h("h4", {}, dayFmt(d, { weekday: "long", month: "short", day: "numeric" }) + (d === now.date ? " · Today" : "")),
-      list.length ? list.map((o) => eventCard(o.event, o)) : h("p.none", {}, "—")));
-  }
   const empty = !state.events.length && h("div.empty", {},
     "The family calendar is empty.", h("br"),
     h("button.btn.primary", { type: "button", style: "margin-top:12px", onclick: () => fill("Add Maria's ballet Tue/Thu 6:30–8 PM") }, "✨ Add an activity with the assistant"));
-  view.replaceChildren(bar, empty || h("div", {}, ...days));
+  view.replaceChildren(bar, empty || (month ? monthGrid(events, now) : weekList(events, now)));
+}
+
+const addMonths = (first, n) => {
+  const m = +first.slice(0, 4) * 12 + +first.slice(5, 7) - 1 + n;
+  return `${Math.floor(m / 12)}-${String((m % 12) + 1).padStart(2, "0")}-01`;
+};
+/** Occurrences on day d (all-day events count on every day they span). */
+const onDay = (occ, d) => occ.filter((o) => o.date === d || (o.allDay && o.date < d && o.end >= d));
+
+/** The week list: every day of state.week with its event cards. */
+function weekList(events, now) {
+  const from = state.week;
+  const occ = agenda(events, from, addDays(from, 6));
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(from, i);
+    const list = onDay(occ, d);
+    days.push(h("section.day" + (d === now.date ? ".today" : "") + (d === state.focusDay ? ".focus" : ""), { id: "day-" + d },
+      h("h4", {}, dayFmt(d, { weekday: "long", month: "short", day: "numeric" }) + (d === now.date ? " · Today" : "")),
+      list.length ? list.map((o) => eventCard(o.event, o)) : h("p.none", {}, "—")));
+  }
+  return h("div", {}, ...days);
+}
+function scrollToFocusDay() {
+  const el = state.focusDay && document.getElementById("day-" + state.focusDay);
+  if (!el) return;
+  const view = $("view-calendar");
+  view.scrollTop += el.getBoundingClientRect().top - view.getBoundingClientRect().top - view.querySelector(".calbar").offsetHeight;
+}
+
+/** The month grid: a dot per event on each day; tapping a day opens its week. */
+function monthGrid(events, now) {
+  const first = state.month, last = addDays(addMonths(first, 1), -1);
+  const from = sundayOf(first), to = addDays(sundayOf(last), 6);
+  const occ = agenda(events, from, to);
+  const MAX_DOTS = 3;
+  const cells = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    const list = onDay(occ, d);
+    const out = d < first || d > last;
+    const names = list.map((o) => o.event.title);
+    cells.push(h("button.mday" + (out ? ".out" : "") + (d === now.date ? ".today" : "") + (list.length ? ".busy" : ""), {
+      type: "button",
+      "aria-label": dayFmt(d, { weekday: "long", month: "long", day: "numeric" }) + (list.length ? `: ${list.length} event${list.length > 1 ? "s" : ""} (${names.join(", ")})` : ": free"),
+      title: names.join("\n"),
+      onclick: () => go("calendar/" + d),
+    },
+      h("span.num", {}, String(+d.slice(8))),
+      list.length > 0 && h("span.dots", {},
+        ...list.slice(0, MAX_DOTS).map((o) => h("span.dot", { style: `--c:${colorFor(o.event.who?.[0] || o.event.title)}` })),
+        list.length > MAX_DOTS && h("span.more", {}, "+" + (list.length - MAX_DOTS))),
+      list.length > 0 && h("span.peek", {}, list[0].allDay ? list[0].event.title : time12(timeOf(list[0].start)).replace(" ", "").toLowerCase() + " " + list[0].event.title),
+    ));
+  }
+  const heads = ["S", "M", "T", "W", "T", "F", "S"].map((x, i) =>
+    h("span.wd", { "aria-hidden": "true", title: dayFmt(addDays(from, i), { weekday: "long" }) }, x));
+  // What's coming up this month, under the grid.
+  const upcoming = agenda(events, first < now.date ? now.date : first, last).length;
+  const busyDays = new Set();
+  for (let d = first; d <= last; d = addDays(d, 1)) if (onDay(occ, d).length) busyDays.add(d);
+  return h("div.month", {},
+    h("div.mgrid", {}, ...heads, ...cells),
+    h("p.mnote", {}, `${busyDays.size} busy day${busyDays.size === 1 ? "" : "s"} this month`,
+      last >= now.date ? ` · ${upcoming} event${upcoming === 1 ? "" : "s"} still to come` : "",
+      " · Tap a day to see its events."));
 }
 
 /* -------------------------------------------------------------------- map */

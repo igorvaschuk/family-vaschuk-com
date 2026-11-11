@@ -342,6 +342,43 @@
     .day h4 { margin: 0; font-size: 15px; color: var(--muted); }
     .day.today h4 { color: var(--accent); }
     .day .none { font-size: 14px; color: var(--muted); margin: -4px 0 0; }
+    .day { scroll-margin-top: 8px; }
+    .day.focus { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .day.focus h4 { color: var(--ink); }
+    .calview { display: flex; gap: 6px; }
+    .calview .btn { flex: 1; max-width: 160px; justify-content: center; text-decoration: none; }
+
+    /* Month grid */
+    .month { padding: 10px 12px 24px; }
+    .mgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+    .wd { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding-bottom: 2px; }
+    .mday {
+      min-height: 64px;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 3px;
+      padding: 5px 5px 4px;
+      border: 1px solid var(--edge);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--ink);
+      text-align: left;
+      overflow: hidden;
+    }
+    .mday:hover { border-color: var(--accent); }
+    .mday.out { background: transparent; color: var(--muted); opacity: .6; }
+    .mday.busy:not(.out) { background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
+    .mday .num { font-size: 14px; font-weight: 700; line-height: 1.2; }
+    .mday.today .num { background: var(--accent); color: #fff; border-radius: 999px; padding: 0 6px; margin-left: -2px; }
+    .mday.today { border-color: var(--accent); }
+    .mday .dots { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+    .mday .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--accent)); }
+    .mday .more { font-size: 11px; font-weight: 700; color: var(--muted); line-height: 1; }
+    .mday .peek { display: none; font-size: 12px; line-height: 1.2; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    @media (min-width: 640px) { .mday { min-height: 84px; } .mday .peek { display: block; } }
+    .mnote { font-size: 14px; color: var(--muted); margin: 12px 4px 0; }
 
     /* Map */
     #view-map { display: flex; flex-direction: column; }
